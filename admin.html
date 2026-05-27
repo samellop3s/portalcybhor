@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cybhor Tech - Painel de Administração</title>
+  <!-- Bootstrap 5.3 CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <!-- Custom CSS -->
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <!-- Loading Overlay -->
+  <div id="loading-overlay" class="position-fixed top-0 start-0 w-100 h-100 d-flex align-items-center justify-content-center bg-dark" style="z-index: 9999; transition: opacity 0.5s ease;">
+    <div class="text-center">
+      <div class="spinner-border text-info" role="status" style="width: 3rem; height: 3rem;">
+        <span class="visually-hidden">Carregando...</span>
+      </div>
+      <h4 class="mt-3 text-info neon-glow-cyan font-monospace">VERIFICANDO SISTEMA ADMIN...</h4>
+    </div>
+  </div>
+
+  <!-- ADMIN AUTH SECTION (Dedicated Admin Login) -->
+  <div id="auth-section" class="auth-container d-none">
+    <div class="glass-panel auth-card">
+      <div class="text-center mb-4">
+        <h2 class="text-info font-monospace mb-1 neon-glow-cyan">CYBHOR TECH</h2>
+        <p class="text-white text-uppercase font-weight-bold small letter-spacing-1">ADMINISTRADOR</p>
+      </div>
+
+      <!-- Auth Error Alert -->
+      <div id="auth-alert" class="alert alert-danger d-none py-2 px-3 font-monospace small" role="alert"></div>
+
+      <!-- Login Form -->
+      <form id="login-form">
+        <h5 class="mb-3 text-light text-center">Login Administrativo</h5>
+        <div class="mb-3">
+          <label class="form-label text-white small">E-mail Administrativo</label>
+          <input type="email" id="login-email" class="form-control form-control-cyber text-white" required placeholder="admin@cybhor.com">
+        </div>
+        <div class="mb-3">
+          <label class="form-label text-white small">Senha</label>
+          <input type="password" id="login-password" class="form-control form-control-cyber text-white" required placeholder="••••••••">
+        </div>
+        <button type="submit" class="btn btn-cyber w-100 mt-3">Autenticar Admin</button>
+        <div class="text-center mt-3">
+          <a href="index.html" class="text-info text-decoration-none small font-weight-bold d-flex align-items-center justify-content-center gap-1">
+            <i data-lucide="arrow-left" style="width: 14px;"></i> Voltar para Portal Geral
+          </a>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- MAIN ADMIN APP CONTAINER -->
+  <div id="main-app" class="container py-4 d-none">
+    
+    <!-- Top Header -->
+    <header class="glass-panel p-3 mb-4 d-flex flex-wrap justify-content-between align-items-center gap-3">
+      <div class="d-flex align-items-center gap-2">
+        <i data-lucide="shield-check" class="text-info" style="width: 28px; height: 28px;"></i>
+        <h3 class="gradient-text font-monospace mb-0 me-3">CYBHOR ADMIN</h3>
+      </div>
+      
+      <div class="d-flex align-items-center gap-3 ms-auto">
+        <a href="index.html" class="btn btn-cyber py-1 px-3 me-2" title="Voltar ao Workspace">
+          <i data-lucide="layout-grid" class="align-middle me-1"></i> Ir para Portal Geral
+        </a>
+        <div class="text-end d-none d-sm-block">
+          <div class="fw-bold text-white" id="header-user-name">Administrador</div>
+          <div class="small" id="header-user-role-badge"><span class="badge role-admin">Admin</span></div>
+        </div>
+        <div class="user-avatar" id="header-user-avatar">AD</div>
+        <button id="btn-logout" class="btn btn-cyber btn-cyber-danger py-1 px-3" title="Sair">
+          <i data-lucide="log-out" class="align-middle"></i>
+        </button>
+      </div>
+    </header>
+
+    <!-- ADMIN MEMBERS SECTION -->
+    <section class="glass-panel p-4 animate__animated animate__fadeIn">
+      <div class="d-flex flex-wrap justify-content-between align-items-center mb-4 gap-3">
+        <div>
+          <h4 class="text-info mb-1 d-flex align-items-center gap-2 font-monospace">
+            <i data-lucide="users"></i> Gerenciamento de Cargos e Acessos
+          </h4>
+          <p class="text-white small mb-0">Gerencie cargos dos integrantes em tempo real abaixo. Alterações salvam e atualizam instantaneamente para os usuários conectados no Firebase.</p>
+        </div>
+        <button class="btn btn-cyber" data-bs-toggle="modal" data-bs-target="#registerMemberModal">
+          <i data-lucide="user-plus" class="me-1"></i> Cadastrar Integrante
+        </button>
+      </div>
+      
+      <div class="table-responsive">
+        <table class="table table-dark table-hover align-middle border-0">
+          <thead>
+            <tr class="text-info border-bottom border-secondary">
+              <th scope="col">Integrante</th>
+              <th scope="col">E-mail</th>
+              <th scope="col">Cargo Atual</th>
+              <th scope="col" style="width: 250px;">Alterar Cargo</th>
+            </tr>
+          </thead>
+          <tbody id="admin-members-list">
+            <!-- Rendered via JS -->
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+  </div>
+
+  <!-- Register Member Modal -->
+  <div class="modal fade" id="registerMemberModal" tabindex="-1" aria-labelledby="registerMemberModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content modal-content-cyber">
+        <div class="modal-header modal-header-cyber">
+          <h5 class="modal-title text-info" id="registerMemberModalLabel"><i data-lucide="user-plus" class="me-2"></i>Cadastrar Novo Integrante</h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <form id="register-member-form">
+          <div class="modal-body">
+            <!-- Modal Error Alert -->
+            <div id="modal-error-alert" class="alert alert-danger d-none py-2 px-3 font-monospace small" role="alert"></div>
+            
+            <div class="mb-3">
+              <label class="form-label text-white small">Nome Completo</label>
+              <input type="text" id="reg-member-name" class="form-control form-control-cyber text-white" required placeholder="Ex: Lucas Silva">
+            </div>
+            <div class="mb-3">
+              <label class="form-label text-white small">E-mail</label>
+              <input type="email" id="reg-member-email" class="form-control form-control-cyber text-white" required placeholder="integrante@cybhor.com">
+            </div>
+            <div class="mb-3">
+              <label class="form-label text-white small">Senha de Acesso Inicial</label>
+              <input type="password" id="reg-member-password" class="form-control form-control-cyber text-white" required placeholder="Mínimo 6 caracteres">
+            </div>
+            <div class="mb-3">
+              <label class="form-label text-white small">Cargo Inicial</label>
+              <select id="reg-member-role" class="form-select form-select-cyber text-white" required>
+                <option value="Integrante" selected>Integrante</option>
+                <option value="Visualizador">Visualizador</option>
+                <option value="Admin">Administrador</option>
+              </select>
+            </div>
+          </div>
+          <div class="modal-footer modal-footer-cyber">
+            <button type="button" class="btn btn-cyber btn-cyber-danger" data-bs-dismiss="modal">Cancelar</button>
+            <button type="submit" class="btn btn-cyber">Criar Conta</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- Bootstrap 5.3 JS -->
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+  <!-- Main Admin JS Script -->
+  <script type="module" src="admin.js"></script>
+</body>
+</html>

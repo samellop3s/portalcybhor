@@ -1,0 +1,41 @@
+{
+  "rules": {
+    ".read": "auth != null",
+    "users": {
+      "$uid": {
+        ".read": "auth != null",
+        // O próprio usuário pode escrever seus dados (nome, email), 
+        // mas o cargo ('role') só pode ser editado pelo Admin ou pelo próprio no momento do cadastro inicial
+        ".write": "auth != null && (auth.uid === $uid || root.child('users').child(auth.uid).child('role').val() === 'Admin')",
+        "role": {
+          ".validate": "newData.val() === 'Integrante' || newData.val() === 'Admin' || root.child('users').child(auth.uid).child('role').val() === 'Admin'"
+        }
+      }
+    },
+    "stages": {
+      ".read": "auth != null",
+      // Apenas Admins podem criar/remover etapas do projeto (ou alterar a estrutura das colunas)
+      ".write": "auth != null && root.child('users').child(auth.uid).child('role').val() === 'Admin'"
+    },
+    "tasks": {
+      ".read": "auth != null",
+      "$taskId": {
+        // Integrantes e Admins podem criar e atualizar tarefas. Apenas Admins podem deletar (excluir).
+        ".write": "auth != null && (root.child('users').child(auth.uid).child('role').val() === 'Admin' || (root.child('users').child(auth.uid).child('role').val() === 'Integrante' && newData.exists()))"
+      }
+    },
+    "ideas": {
+      ".read": "auth != null",
+      // Qualquer um autenticado pode criar ideias, mas apenas Admin pode aprovar/excluir
+      "$ideaId": {
+        ".write": "auth != null",
+        "votes": {
+          "$voterUid": {
+            // Um usuário só pode votar por si mesmo
+            ".write": "auth != null && auth.uid === $voterUid"
+          }
+        }
+      }
+    }
+  }
+}
