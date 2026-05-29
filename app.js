@@ -319,6 +319,84 @@ function populateAssigneeDropdowns() {
   promoteTaskAssignee.innerHTML = options;
 }
 
+function showAppToast(message, variant = 'info') {
+  let toastContainer = document.getElementById('app-toast-container');
+
+  if (!toastContainer) {
+    toastContainer = document.createElement('div');
+    toastContainer.id = 'app-toast-container';
+    toastContainer.className = 'toast-container position-fixed top-0 end-0 p-3';
+    toastContainer.style.zIndex = '1080';
+    document.body.appendChild(toastContainer);
+  }
+
+  const toastEl = document.createElement('div');
+  toastEl.className = 'toast border-0 shadow-lg';
+  toastEl.setAttribute('role', 'alert');
+  toastEl.setAttribute('aria-live', 'assertive');
+  toastEl.setAttribute('aria-atomic', 'true');
+  toastEl.style.background = 'rgba(10, 14, 24, 0.92)';
+  toastEl.style.borderLeft = '4px solid #00d4ff';
+  toastEl.style.backdropFilter = 'blur(6px)';
+  toastEl.style.color = '#e6f7ff';
+  toastEl.innerHTML = `
+    <div class="d-flex align-items-start p-2">
+      <div class="me-3 mt-1 text-info" style="font-size: 1.1rem;">
+        <i data-lucide="shield-check" style="width: 18px; height: 18px;"></i>
+      </div>
+      <div class="toast-body ps-1 pe-2">${message}</div>
+      <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Fechar"></button>
+    </div>
+  `;
+
+  toastContainer.appendChild(toastEl);
+
+  if (window.lucide) {
+    window.lucide.createIcons();
+  }
+
+  const toast = new bootstrap.Toast(toastEl, {
+    autohide: true,
+    delay: 5000
+  });
+
+  toast.show();
+  toastEl.addEventListener('hidden.bs.toast', () => toastEl.remove());
+}
+
+function showTaskScheduledNotification(taskTitle, taskAssigneeName = 'Equipe') {
+  const notificationTitle = 'Tarefa agendada';
+  const notificationBody = `A tarefa "${taskTitle}" foi agendada para ${taskAssigneeName}.`;
+
+  if ('Notification' in window) {
+    if (Notification.permission === 'granted') {
+      new Notification(notificationTitle, {
+        body: notificationBody,
+        icon: 'https://cdn-icons-png.flaticon.com/512/1828/1828817.png'
+      });
+      return;
+    }
+
+    if (Notification.permission !== 'denied') {
+      Notification.requestPermission().then((permission) => {
+        if (permission === 'granted') {
+          new Notification(notificationTitle, {
+            body: notificationBody,
+            icon: 'https://cdn-icons-png.flaticon.com/512/1828/1828817.png'
+          });
+        } else {
+          showAppToast(notificationBody, 'info');
+        }
+      }).catch(() => {
+        showAppToast(notificationBody, 'info');
+      });
+      return;
+    }
+  }
+
+  showAppToast(notificationBody, 'info');
+}
+
 /* ==========================================
    KANBAN WORKFLOW MANAGEMENT (Stages & Tasks)
    ========================================== */
@@ -622,6 +700,7 @@ addTaskForm.addEventListener('submit', async (e) => {
 
   try {
     const newTaskRef = push(ref(db, 'tasks'));
+    const scheduledAt = Date.now();
     await set(newTaskRef, {
       title,
       description,
@@ -629,8 +708,14 @@ addTaskForm.addEventListener('submit', async (e) => {
       assigneeId,
       stageId,
       creatorId: currentUser.uid,
-      createdAt: Date.now()
+      createdAt: scheduledAt,
+      scheduledAt,
+      status: 'pending'
     });
+
+    const assigneeName = allUsers[assigneeId]?.name || 'Equipe';
+    showTaskScheduledNotification(title, assigneeName);
+
     addTaskModal.hide();
     addTaskForm.reset();
   } catch (error) {
@@ -645,7 +730,7 @@ addTaskForm.addEventListener('submit', async (e) => {
 function renderIdeas() {
   ideasList.innerHTML = '';
   
-  const activeIdeasKeys = Object.keys(ideas).filter(id => ideas[id].status !== 'approved');
+  const activeIdeasKeys = Object.keys(ideas).filter(id => ideas[id].status !== 'approved' && ideas[id].status !== 'discarded');
 
   if (activeIdeasKeys.length === 0) {
     ideasList.innerHTML = `
@@ -680,8 +765,11 @@ function renderIdeas() {
 
     // Admin promotion button
     const adminActionHtml = currentUser && currentUser.role === 'Admin'
-      ? `<button class="btn btn-cyber btn-cyber-success py-1 px-2.5 small btn-promote-idea w-100 mt-3" data-idea-id="${ideaId}">
+      ? `<button class="btn btn-cyber btn-cyber-success py-1 px-2.5 small btn-promote-idea w-100 mt-2" data-idea-id="${ideaId}">
           <i data-lucide="check" style="width:16px;"></i> Aprovar e Implementar
+         </button>
+         <button class="btn btn-cyber btn-cyber-danger py-1 px-2.5 small btn-discard-idea w-100 mt-2" data-idea-id="${ideaId}">
+          <i data-lucide="x" style="width:16px;"></i> Descartar Ideia
          </button>`
       : '';
 
@@ -776,6 +864,21 @@ function attachVotingHandlers() {
       
       promoteTaskStage.innerHTML = options || '<option value="" disabled>Crie uma etapa no Kanban primeiro</option>';
       promoteIdeaModal.show();
+    });
+  });
+
+  document.querySelectorAll('.btn-discard-idea').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const ideaId = btn.getAttribute('data-idea-id');
+      if (!ideaId) return;
+      if (!confirm('Deseja descartar esta ideia?')) return;
+
+      try {
+        await update(ref(db, `ideas/${ideaId}`), { status: 'discarded' });
+      } catch (error) {
+        console.error('Erro ao descartar ideia:', error);
+        alert('Erro ao descartar ideia: ' + error.message);
+      }
     });
   });
 }
