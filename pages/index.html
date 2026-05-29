@@ -78,12 +78,68 @@
         <button id="btn-theme-toggle" class="btn btn-cyber btn-cyber-purple py-1 px-3" title="Alternar modo escuro" aria-label="Alternar modo escuro">
           <i data-lucide="moon" class="align-middle"></i>
         </button>
-        <div class="user-avatar" id="header-user-avatar">--</div>
+        <button type="button" class="user-avatar" id="header-user-avatar" aria-label="Abrir perfil" title="Abrir perfil">--</button>
         <button id="btn-logout" class="btn btn-cyber btn-cyber-danger py-1 px-3" title="Sair">
           <i data-lucide="log-out" class="align-middle"></i>
         </button>
       </div>
     </header>
+
+    <section id="user-profile-panel" class="glass-panel p-4 mb-4 d-none">
+      <div class="d-flex justify-content-between align-items-center gap-3 mb-4">
+        <div>
+          <h4 class="mb-1 text-light">Perfil do usuário</h4>
+          <p class="text-muted mb-0 small">Visualize seu cargo, tarefas e recado pessoal.</p>
+        </div>
+        <button type="button" id="close-profile-panel" class="btn btn-cyber btn-cyber-purple py-1 px-3" aria-label="Fechar perfil">
+          <i data-lucide="x" class="align-middle"></i>
+        </button>
+      </div>
+
+      <div class="row g-3 align-items-stretch">
+        <div class="col-lg-4">
+          <div class="glass-panel p-3 h-100">
+            <div class="d-flex align-items-center gap-3 mb-3">
+              <div class="user-avatar" id="profile-avatar-large">--</div>
+              <div>
+                <div class="fw-bold text-white" id="profile-user-name">Carregando...</div>
+                <div class="small text-muted" id="profile-user-email">--</div>
+                <div class="mt-2" id="profile-role-badge"><span class="badge role-visualizador">Carregando</span></div>
+              </div>
+            </div>
+            <p class="small text-muted mb-2">Cargo no painel</p>
+            <div class="fw-semibold text-white" id="profile-user-role">Carregando...</div>
+          </div>
+        </div>
+
+        <div class="col-lg-4">
+          <div class="glass-panel p-3 h-100">
+            <h6 class="text-light mb-3">Tarefas</h6>
+            <div class="d-flex justify-content-between align-items-center mb-2">
+              <span class="text-muted small">Concluídas</span>
+              <strong class="text-success" id="profile-completed-count">0</strong>
+            </div>
+            <div class="d-flex justify-content-between align-items-center">
+              <span class="text-muted small">Não concluídas</span>
+              <strong class="text-warning" id="profile-pending-count">0</strong>
+            </div>
+          </div>
+        </div>
+
+        <div class="col-lg-4">
+          <div class="glass-panel p-3 h-100 d-flex flex-column">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+              <h6 class="text-light mb-0">Recado</h6>
+              <small class="text-muted" id="profile-message-status">Recado vazio — salve para atualizar</small>
+            </div>
+            <textarea id="profile-message-input" class="form-control form-control-cyber flex-grow-1" rows="6" placeholder="Escreva um recado aqui..."></textarea>
+            <div class="d-flex justify-content-end mt-3">
+              <button type="button" id="save-profile-message" class="btn btn-cyber">Salvar recado</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
 
     <!-- MAIN DASHBOARD CONTENT -->
     <div class="row g-4">

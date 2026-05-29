@@ -7,6 +7,12 @@
         ".write": "auth != null && (auth.uid === $uid || root.child('users').child(auth.uid).child('role').val() === 'Admin')",
         "role": {
           ".validate": "newData.val() === 'Integrante' || newData.val() === 'Admin' || newData.val() === 'Visualizador'"
+        },
+        "profileMessage": {
+          ".validate": "newData.isString() && newData.val().length <= 300"
+        },
+        "profileCreatedAt": {
+          ".validate": "newData.isNumber()"
         }
       }
     },

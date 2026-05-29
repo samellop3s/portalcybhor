@@ -29,6 +29,18 @@ const loginForm = document.getElementById('login-form');
 const headerUserName = document.getElementById('header-user-name');
 const headerUserRoleBadge = document.getElementById('header-user-role-badge');
 const headerUserAvatar = document.getElementById('header-user-avatar');
+const userProfilePanel = document.getElementById('user-profile-panel');
+const closeUserProfilePanelBtn = document.getElementById('close-profile-panel');
+const saveProfileMessageBtn = document.getElementById('save-profile-message');
+const profileMessageInput = document.getElementById('profile-message-input');
+const profileMessageStatus = document.getElementById('profile-message-status');
+const profileAvatarLarge = document.getElementById('profile-avatar-large');
+const profileUserName = document.getElementById('profile-user-name');
+const profileUserEmail = document.getElementById('profile-user-email');
+const profileUserRole = document.getElementById('profile-user-role');
+const profileRoleBadge = document.getElementById('profile-role-badge');
+const profileCompletedCount = document.getElementById('profile-completed-count');
+const profilePendingCount = document.getElementById('profile-pending-count');
 const btnLogout = document.getElementById('btn-logout');
 const btnThemeToggle = document.getElementById('btn-theme-toggle');
 const themeStorageKey = 'cybhorTheme';
@@ -149,7 +161,9 @@ onAuthStateChanged(auth, async (user) => {
         await set(userRef, {
           name: name,
           email: user.email,
-          role: role
+          role: role,
+          profileMessage: '',
+          profileCreatedAt: Date.now()
         });
       }
 
@@ -168,14 +182,48 @@ onAuthStateChanged(auth, async (user) => {
   }
 });
 
+async function ensureUserProfileDefaults(uid, userData) {
+  const updates = {};
+
+  if (typeof userData.profileMessage === 'undefined' || userData.profileMessage === null) {
+    updates.profileMessage = '';
+  }
+
+  if (typeof userData.profileCreatedAt === 'undefined' || userData.profileCreatedAt === null) {
+    updates.profileCreatedAt = Date.now();
+  }
+
+  if (!userData.name || userData.name.trim().length === 0) {
+    updates.name = 'Usuário Cybhor';
+  }
+
+  if (!userData.email) {
+    updates.email = userData.email || '';
+  }
+
+  if (!userData.role) {
+    updates.role = 'Integrante';
+  }
+
+  if (Object.keys(updates).length > 0) {
+    await update(ref(db, `users/${uid}`), updates);
+  }
+}
+
 // Realtime Sync Init
 function startRealtimeSync(uid) {
   // 1. Sync current user details
-  const userListener = onValue(ref(db, `users/${uid}`), (snapshot) => {
+  const userListener = onValue(ref(db, `users/${uid}`), async (snapshot) => {
     if (snapshot.exists()) {
       currentUser = { uid, ...snapshot.val() };
+      await ensureUserProfileDefaults(uid, currentUser);
+      const refreshedSnapshot = await get(ref(db, `users/${uid}`));
+      if (refreshedSnapshot.exists()) {
+        currentUser = { uid, ...refreshedSnapshot.val() };
+      }
       updateHeader();
       updatePermissionsUI();
+      renderUserProfilePanel();
       renderIdeas();
     }
   });
@@ -262,6 +310,39 @@ btnLogout.addEventListener('click', () => {
   });
 });
 
+if (headerUserAvatar) {
+  headerUserAvatar.addEventListener('click', () => {
+    if (!currentUser) return;
+    if (userProfilePanel) {
+      userProfilePanel.classList.toggle('d-none');
+      if (!userProfilePanel.classList.contains('d-none')) {
+        renderUserProfilePanel();
+      }
+      if (window.lucide) lucide.createIcons();
+    }
+  });
+}
+
+if (closeUserProfilePanelBtn) {
+  closeUserProfilePanelBtn.addEventListener('click', () => {
+    if (userProfilePanel) {
+      userProfilePanel.classList.add('d-none');
+    }
+  });
+}
+
+if (saveProfileMessageBtn) {
+  saveProfileMessageBtn.addEventListener('click', async () => {
+    if (!currentUser || !profileMessageInput) return;
+    const message = profileMessageInput.value.trim();
+    await update(ref(db, `users/${currentUser.uid}`), { profileMessage: message });
+    if (profileMessageStatus) {
+      profileMessageStatus.textContent = 'Recado salvo';
+    }
+    currentUser.profileMessage = message;
+  });
+}
+
 function showAuthError(msg) {
   authAlert.textContent = msg;
   authAlert.classList.remove('d-none');
@@ -285,6 +366,40 @@ function updateHeader() {
   // Set Initials Avatar
   const initials = currentUser.name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
   headerUserAvatar.textContent = initials;
+  if (profileAvatarLarge) profileAvatarLarge.textContent = initials;
+  if (profileUserName) profileUserName.textContent = currentUser.name;
+  if (profileUserEmail) profileUserEmail.textContent = currentUser.email || '';
+  if (profileUserRole) profileUserRole.textContent = currentUser.role;
+  if (profileRoleBadge) {
+    profileRoleBadge.innerHTML = `<span class="badge ${badgeClass}">${currentUser.role}</span>`;
+  }
+  if (profileMessageInput) {
+    profileMessageInput.value = currentUser.profileMessage || '';
+  }
+
+  renderUserProfilePanel();
+}
+
+function renderUserProfilePanel() {
+  if (!currentUser) return;
+
+  const completedTasks = Object.values(tasks).filter(task => task.assigneeId === currentUser.uid && task.status === 'done').length;
+  const pendingTasks = Object.values(tasks).filter(task => task.assigneeId === currentUser.uid && task.status !== 'done').length;
+
+  if (profileCompletedCount) profileCompletedCount.textContent = completedTasks;
+  if (profilePendingCount) profilePendingCount.textContent = pendingTasks;
+
+  if (profileMessageInput) {
+    profileMessageInput.value = currentUser.profileMessage || '';
+  }
+
+  if (profileMessageStatus) {
+    if (currentUser.profileMessage && currentUser.profileMessage.trim().length > 0) {
+      profileMessageStatus.textContent = 'Recado salvo';
+    } else {
+      profileMessageStatus.textContent = 'Recado vazio — salve para atualizar';
+    }
+  }
 }
 
 function updatePermissionsUI() {
@@ -319,7 +434,28 @@ function populateAssigneeDropdowns() {
   promoteTaskAssignee.innerHTML = options;
 }
 
-function showAppToast(message, variant = 'info') {
+function getPriorityNotificationColor(priority = 'medium') {
+  switch (priority) {
+    case 'high': return '#dc2626';
+    case 'medium': return '#ff6b00';
+    case 'low': return '#2563eb';
+    default: return '#00d4ff';
+  }
+}
+
+function buildLucideNotificationIcon(priority = 'medium') {
+  const color = getPriorityNotificationColor(priority);
+  const svg = `
+    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M6 8a6 6 0 0 1 12 0c0 4.5 3 5.5 3 9H3c0-3.5 3-4.5 3-9"/>
+      <path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/>
+    </svg>
+  `.trim();
+
+  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+}
+
+function showAppToast(message, variant = 'info', accentColor = '#00d4ff', iconMarkup = '') {
   let toastContainer = document.getElementById('app-toast-container');
 
   if (!toastContainer) {
@@ -330,19 +466,23 @@ function showAppToast(message, variant = 'info') {
     document.body.appendChild(toastContainer);
   }
 
+  const iconContent = iconMarkup.startsWith('data:image/svg+xml')
+    ? `<img src="${iconMarkup}" alt="" style="width: 18px; height: 18px; display: block;" />`
+    : (iconMarkup || '<i data-lucide="shield-check" style="width: 18px; height: 18px;"></i>');
+
   const toastEl = document.createElement('div');
   toastEl.className = 'toast border-0 shadow-lg';
   toastEl.setAttribute('role', 'alert');
   toastEl.setAttribute('aria-live', 'assertive');
   toastEl.setAttribute('aria-atomic', 'true');
   toastEl.style.background = 'rgba(10, 14, 24, 0.92)';
-  toastEl.style.borderLeft = '4px solid #00d4ff';
+  toastEl.style.borderLeft = `4px solid ${accentColor}`;
   toastEl.style.backdropFilter = 'blur(6px)';
   toastEl.style.color = '#e6f7ff';
   toastEl.innerHTML = `
     <div class="d-flex align-items-start p-2">
-      <div class="me-3 mt-1 text-info" style="font-size: 1.1rem;">
-        <i data-lucide="shield-check" style="width: 18px; height: 18px;"></i>
+      <div class="me-3 mt-1" style="font-size: 1.1rem; color: ${accentColor};">
+        ${iconContent}
       </div>
       <div class="toast-body ps-1 pe-2">${message}</div>
       <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Fechar"></button>
@@ -364,15 +504,17 @@ function showAppToast(message, variant = 'info') {
   toastEl.addEventListener('hidden.bs.toast', () => toastEl.remove());
 }
 
-function showTaskScheduledNotification(taskTitle, taskAssigneeName = 'Equipe') {
+function showTaskScheduledNotification(taskTitle, taskAssigneeName = 'Equipe', priority = 'medium') {
   const notificationTitle = 'Tarefa agendada';
   const notificationBody = `A tarefa "${taskTitle}" foi agendada para ${taskAssigneeName}.`;
+  const accentColor = getPriorityNotificationColor(priority);
+  const notificationIcon = buildLucideNotificationIcon(priority);
 
   if ('Notification' in window) {
     if (Notification.permission === 'granted') {
       new Notification(notificationTitle, {
         body: notificationBody,
-        icon: 'https://cdn-icons-png.flaticon.com/512/1828/1828817.png'
+        icon: notificationIcon
       });
       return;
     }
@@ -382,19 +524,19 @@ function showTaskScheduledNotification(taskTitle, taskAssigneeName = 'Equipe') {
         if (permission === 'granted') {
           new Notification(notificationTitle, {
             body: notificationBody,
-            icon: 'https://cdn-icons-png.flaticon.com/512/1828/1828817.png'
+            icon: notificationIcon
           });
         } else {
-          showAppToast(notificationBody, 'info');
+          showAppToast(notificationBody, 'info', accentColor, buildLucideNotificationIcon(priority));
         }
       }).catch(() => {
-        showAppToast(notificationBody, 'info');
+        showAppToast(notificationBody, 'info', accentColor, buildLucideNotificationIcon(priority));
       });
       return;
     }
   }
 
-  showAppToast(notificationBody, 'info');
+  showAppToast(notificationBody, 'info', accentColor, buildLucideNotificationIcon(priority));
 }
 
 /* ==========================================
@@ -714,7 +856,7 @@ addTaskForm.addEventListener('submit', async (e) => {
     });
 
     const assigneeName = allUsers[assigneeId]?.name || 'Equipe';
-    showTaskScheduledNotification(title, assigneeName);
+    showTaskScheduledNotification(title, assigneeName, priority);
 
     addTaskModal.hide();
     addTaskForm.reset();

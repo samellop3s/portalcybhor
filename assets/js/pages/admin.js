@@ -391,7 +391,9 @@ if (registerMemberForm) {
       await set(ref(db, `users/${newUser.uid}`), {
         name: name,
         email: email,
-        role: role
+        role: role,
+        profileMessage: '',
+        profileCreatedAt: Date.now()
       });
 
       // Log out of secondary instance to clean up
