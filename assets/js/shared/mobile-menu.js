@@ -225,10 +225,17 @@ class MobileMenuController {
   }
 }
 
-// Inicializa o controlador do menu quando o DOM está pronto
-document.addEventListener('DOMContentLoaded', () => {
+// Inicializa o controlador do menu
+// Como este é um módulo carregado no final do body, o DOM já está pronto
+if (document.readyState === 'loading') {
+  // Se ainda estiver carregando (improvável), aguarda
+  document.addEventListener('DOMContentLoaded', () => {
+    window.mobileMenuController = new MobileMenuController();
+  });
+} else {
+  // DOM já foi carregado, inicializa direto
   window.mobileMenuController = new MobileMenuController();
-});
+}
 
 // Expor globalmente para uso em outros scripts
 export default MobileMenuController;
