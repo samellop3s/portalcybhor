@@ -2,11 +2,15 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/12.13.0/fireba
 import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged, createUserWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/12.13.0/firebase-auth.js";
 import { getDatabase, ref, set, onValue, update, remove, get } from "https://www.gstatic.com/firebasejs/12.13.0/firebase-database.js";
 import { firebaseConfig } from "../shared/config.js";
+import StorageManager from "../shared/storage-manager.js";
 
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getDatabase(app);
+
+// Initialize Storage Manager for local persistence
+const storageManager = new StorageManager();
 
 // Secondary Auth instance to register new users without signing out the admin
 const secondaryApp = initializeApp(firebaseConfig, "SecondaryRegistrationApp");
@@ -183,12 +187,14 @@ function startAdminRealtimeSync(uid) {
   // 3. Sync tasks
   const tasksListener = onValue(ref(db, 'tasks'), (snapshot) => {
     allTasks = snapshot.exists() ? snapshot.val() : {};
+    storageManager.saveTasks(allTasks);
   });
   activeListeners.push(tasksListener);
 
   // 4. Sync ideas
   const ideasListener = onValue(ref(db, 'ideas'), (snapshot) => {
     allIdeas = snapshot.exists() ? snapshot.val() : {};
+    storageManager.saveIdeas(allIdeas);
   });
   activeListeners.push(ideasListener);
 

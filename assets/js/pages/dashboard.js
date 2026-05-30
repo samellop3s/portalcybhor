@@ -2,11 +2,15 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/12.13.0/fireba
 import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.13.0/firebase-auth.js";
 import { getDatabase, ref, onValue, get } from "https://www.gstatic.com/firebasejs/12.13.0/firebase-database.js";
 import { firebaseConfig } from "../shared/config.js";
+import StorageManager from "../shared/storage-manager.js";
 
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getDatabase(app);
+
+// Initialize Storage Manager for local persistence
+const storageManager = new StorageManager();
 
 // DOM
 const totalEl = document.getElementById('total-tasks');
@@ -271,6 +275,17 @@ function attachActions() {
 
 // Real-time listeners
 function startRealtime() {
+  // Load cached data from localStorage first
+  const cachedTasks = storageManager.loadTasks();
+  const cachedStages = storageManager.loadStages();
+  
+  if (Object.keys(cachedTasks).length > 0) {
+    tasks = cachedTasks;
+  }
+  if (Object.keys(cachedStages).length > 0) {
+    stages = cachedStages;
+  }
+
   // users
   onValue(ref(db, 'users'), snapshot => {
     users = snapshot.exists() ? snapshot.val() : {};
@@ -283,12 +298,14 @@ function startRealtime() {
   // stages
   onValue(ref(db, 'stages'), snapshot => {
     stages = snapshot.exists() ? snapshot.val() : {};
+    storageManager.saveStages(stages);
     buildTable();
   });
 
   // tasks
   onValue(ref(db, 'tasks'), snapshot => {
     tasks = snapshot.exists() ? snapshot.val() : {};
+    storageManager.saveTasks(tasks);
     const statsByUser = computeStatsByUser();
     buildCharts(statsByUser);
     buildTable();

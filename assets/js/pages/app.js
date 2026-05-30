@@ -2,11 +2,15 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/12.13.0/fireba
 import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.13.0/firebase-auth.js";
 import { getDatabase, ref, set, push, onValue, update, remove, get } from "https://www.gstatic.com/firebasejs/12.13.0/firebase-database.js";
 import { firebaseConfig } from "../shared/config.js";
+import StorageManager from "../shared/storage-manager.js";
 
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getDatabase(app);
+
+// Initialize Storage Manager for local persistence
+const storageManager = new StorageManager();
 
 // Local State
 let currentUser = null;
@@ -212,6 +216,21 @@ async function ensureUserProfileDefaults(uid, userData) {
 
 // Realtime Sync Init
 function startRealtimeSync(uid) {
+  // Load cached data from localStorage first (for offline/quick load)
+  const cachedTasks = storageManager.loadTasks();
+  const cachedIdeas = storageManager.loadIdeas();
+  const cachedStages = storageManager.loadStages();
+  
+  if (Object.keys(cachedTasks).length > 0) {
+    tasks = cachedTasks;
+  }
+  if (Object.keys(cachedIdeas).length > 0) {
+    ideas = cachedIdeas;
+  }
+  if (Object.keys(cachedStages).length > 0) {
+    stages = cachedStages;
+  }
+
   // 1. Sync current user details
   const userListener = onValue(ref(db, `users/${uid}`), async (snapshot) => {
     if (snapshot.exists()) {
@@ -241,6 +260,7 @@ function startRealtimeSync(uid) {
   // 3. Sync project stages
   const stagesListener = onValue(ref(db, 'stages'), (snapshot) => {
     stages = snapshot.exists() ? snapshot.val() : {};
+    storageManager.saveStages(stages);
     renderKanban();
   });
   activeListeners.push(stagesListener);
@@ -248,6 +268,7 @@ function startRealtimeSync(uid) {
   // 4. Sync tasks
   const tasksListener = onValue(ref(db, 'tasks'), (snapshot) => {
     tasks = snapshot.exists() ? snapshot.val() : {};
+    storageManager.saveTasks(tasks);
     renderKanban();
   });
   activeListeners.push(tasksListener);
@@ -255,6 +276,7 @@ function startRealtimeSync(uid) {
   // 5. Sync ideas
   const ideasListener = onValue(ref(db, 'ideas'), (snapshot) => {
     ideas = snapshot.exists() ? snapshot.val() : {};
+    storageManager.saveIdeas(ideas);
     renderIdeas();
   });
   activeListeners.push(ideasListener);
