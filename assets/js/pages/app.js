@@ -202,7 +202,7 @@ async function ensureUserProfileDefaults(uid, userData) {
   }
 
   if (!userData.email) {
-    updates.email = userData.email || '';
+    updates.email = '';
   }
 
   if (!userData.role) {
