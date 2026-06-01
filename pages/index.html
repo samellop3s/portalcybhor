@@ -144,62 +144,6 @@
       </div>
     </div>
 
-    <section id="user-profile-panel" class="glass-panel p-4 mb-4 d-none">
-      <div class="d-flex justify-content-between align-items-center gap-3 mb-4">
-        <div>
-          <h4 class="mb-1 text-light">Perfil do usuário</h4>
-          <p class="text-muted mb-0 small">Visualize seu cargo, tarefas e recado pessoal.</p>
-        </div>
-        <button type="button" id="close-profile-panel" class="btn btn-cyber btn-cyber-purple py-1 px-3" aria-label="Fechar perfil">
-          <i data-lucide="x" class="align-middle"></i>
-        </button>
-      </div>
-
-      <div class="row g-3 align-items-stretch">
-        <div class="col-lg-4">
-          <div class="glass-panel p-3 h-100">
-            <div class="d-flex align-items-center gap-3 mb-3">
-              <div class="user-avatar" id="profile-avatar-large">--</div>
-              <div>
-                <div class="fw-bold text-white" id="profile-user-name">Carregando...</div>
-                <div class="small text-muted" id="profile-user-email">--</div>
-                <div class="mt-2" id="profile-role-badge"><span class="badge role-visualizador">Carregando</span></div>
-              </div>
-            </div>
-            <p class="small text-muted mb-2">Cargo no painel</p>
-            <div class="fw-semibold text-white" id="profile-user-role">Carregando...</div>
-          </div>
-        </div>
-
-        <div class="col-lg-4">
-          <div class="glass-panel p-3 h-100">
-            <h6 class="text-light mb-3">Tarefas</h6>
-            <div class="d-flex justify-content-between align-items-center mb-2">
-              <span class="text-muted small">Concluídas</span>
-              <strong class="text-success" id="profile-completed-count">0</strong>
-            </div>
-            <div class="d-flex justify-content-between align-items-center">
-              <span class="text-muted small">Não concluídas</span>
-              <strong class="text-warning" id="profile-pending-count">0</strong>
-            </div>
-          </div>
-        </div>
-
-        <div class="col-lg-4">
-          <div class="glass-panel p-3 h-100 d-flex flex-column">
-            <div class="d-flex justify-content-between align-items-center mb-2">
-              <h6 class="text-light mb-0">Recado</h6>
-              <small class="text-muted" id="profile-message-status">Recado vazio — salve para atualizar</small>
-            </div>
-            <textarea id="profile-message-input" class="form-control form-control-cyber flex-grow-1" rows="6" placeholder="Escreva um recado aqui..."></textarea>
-            <div class="d-flex justify-content-end mt-3">
-              <button type="button" id="save-profile-message" class="btn btn-cyber">Salvar recado</button>
-            </div>
-          </div>
-        </div>
-      </div>
-    </section>
-
     <!-- MAIN DASHBOARD CONTENT -->
     <div class="row g-4">
       
@@ -226,30 +170,6 @@
           </div>
         </div>
       </main>
-
-      <!-- IDEAS & VOTING SIDEBAR -->
-      <aside id="ideas-sidebar" class="col-xl-4 col-lg-5 d-none">
-        <div class="glass-panel p-4 h-100 d-flex flex-column">
-          <div class="d-flex justify-content-between align-items-center mb-3">
-            <div>
-              <h4 class="mb-1 text-light">Painel de Ideias</h4>
-              <p class="text-muted mb-0 small">Sugira melhorias e vote nas melhores propostas.</p>
-            </div>
-            <button class="btn btn-cyber btn-cyber-purple py-1.5 px-3" data-bs-toggle="modal" data-bs-target="#addIdeaModal">
-              <i data-lucide="plus"></i> Enviar Ideia
-            </button>
-          </div>
-
-          <div class="ideas-container flex-grow-1" id="ideas-list">
-            <!-- Dynamic ideas list here -->
-            <div class="text-center text-muted py-5">
-              <i data-lucide="lightbulb" style="width: 48px; height: 48px; opacity: 0.5;"></i>
-              <p class="mt-2 mb-0">Nenhuma ideia sugerida ainda.</p>
-              <small>Seja o primeiro a enviar!</small>
-            </div>
-          </div>
-        </div>
-      </aside>
 
     </div>
   </div>
@@ -319,79 +239,6 @@
           <div class="modal-footer modal-footer-cyber">
             <button type="button" class="btn btn-cyber btn-cyber-danger" data-bs-dismiss="modal">Cancelar</button>
             <button type="submit" class="btn btn-cyber">Adicionar Tarefa</button>
-          </div>
-        </form>
-      </div>
-    </div>
-  </div>
-
-  <!-- Add Idea Modal -->
-  <div class="modal fade" id="addIdeaModal" tabindex="-1" aria-labelledby="addIdeaModalLabel" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered">
-      <div class="modal-content modal-content-cyber">
-        <div class="modal-header modal-header-cyber">
-          <h5 class="modal-title text-info" id="addIdeaModalLabel">Propor Nova Ideia</h5>
-          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
-        </div>
-        <form id="add-idea-form">
-          <div class="modal-body">
-            <div class="mb-3">
-              <label class="form-label text-muted small">Título da Ideia</label>
-              <input type="text" id="idea-title" class="form-control form-control-cyber" required placeholder="Ex: Adicionar modo escuro automático">
-            </div>
-            <div class="mb-3">
-              <label class="form-label text-muted small">Descrição do Impacto</label>
-              <textarea id="idea-description" class="form-control form-control-cyber" rows="4" required placeholder="Explique qual o benefício dessa ideia para o projeto..."></textarea>
-            </div>
-          </div>
-          <div class="modal-footer modal-footer-cyber">
-            <button type="button" class="btn btn-cyber btn-cyber-danger" data-bs-dismiss="modal">Cancelar</button>
-            <button type="submit" class="btn btn-cyber btn-cyber-purple">Enviar Ideia</button>
-          </div>
-        </form>
-      </div>
-    </div>
-  </div>
-
-  <!-- Promote Idea to Task Modal (Admin Only) -->
-  <div class="modal fade" id="promoteIdeaModal" tabindex="-1" aria-labelledby="promoteIdeaModalLabel" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered">
-      <div class="modal-content modal-content-cyber">
-        <div class="modal-header modal-header-cyber">
-          <h5 class="modal-title text-success" id="promoteIdeaModalLabel"><i data-lucide="rocket"></i> Promover Ideia para Tarefa</h5>
-          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
-        </div>
-        <form id="promote-idea-form">
-          <input type="hidden" id="promote-idea-id">
-          <div class="modal-body">
-            <p class="text-light small" id="promote-idea-summary">Esta ideia será transformada em tarefa no Kanban e arquivada.</p>
-            
-            <div class="mb-3">
-              <label class="form-label text-muted small">Selecione a Etapa de Destino</label>
-              <select id="promote-task-stage" class="form-select form-select-cyber" required>
-                <!-- Dynamically populated stages -->
-              </select>
-            </div>
-            <div class="row">
-              <div class="col-md-6 mb-3">
-                <label class="form-label text-muted small">Prioridade</label>
-                <select id="promote-task-priority" class="form-select form-select-cyber" required>
-                  <option value="low">Baixa</option>
-                  <option value="medium" selected>Média</option>
-                  <option value="high">Alta</option>
-                </select>
-              </div>
-              <div class="col-md-6 mb-3">
-                <label class="form-label text-muted small">Responsável</label>
-                <select id="promote-task-assignee" class="form-select form-select-cyber" required>
-                  <!-- Populate from user list -->
-                </select>
-              </div>
-            </div>
-          </div>
-          <div class="modal-footer modal-footer-cyber">
-            <button type="button" class="btn btn-cyber btn-cyber-danger" data-bs-dismiss="modal">Cancelar</button>
-            <button type="submit" class="btn btn-cyber btn-cyber-success">Criar Tarefa e Arquivar</button>
           </div>
         </form>
       </div>
