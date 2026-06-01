@@ -113,6 +113,31 @@
           </div>
         </div>
 
+        <!-- Profile Photo Upload -->
+        <div class="glass-panel p-4 mb-4">
+          <h5 class="text-light mb-4">Foto de Identificação</h5>
+          <div class="p-3 rounded-3 text-center" style="background: rgba(99, 102, 241, 0.1); border: 2px dashed rgba(99, 102, 241, 0.5);">
+            <div class="mb-3">
+              <i data-lucide="camera" class="text-indigo-400" style="width: 40px; height: 40px; opacity: 0.7;"></i>
+            </div>
+            <p class="text-muted small mb-3">Clique no botão abaixo para selecionar uma foto de perfil</p>
+            <div class="d-flex gap-2 justify-content-center">
+              <label for="profile-photo-input" class="btn btn-cyber btn-cyber-purple py-1.5 px-3 mb-0">
+                <i data-lucide="upload" class="align-middle me-1"></i> Selecionar Foto
+              </label>
+              <input type="file" id="profile-photo-input" class="d-none" accept="image/*" />
+              <button type="button" class="btn btn-cyber btn-cyber-danger py-1.5 px-3" id="btn-remove-photo" style="display: none;">
+                <i data-lucide="trash-2" class="align-middle me-1"></i> Remover Foto
+              </button>
+            </div>
+            <small class="text-muted d-block mt-3">
+              <i data-lucide="info" class="align-middle" style="width: 14px; height: 14px;"></i>
+              Formatos aceitos: JPG, PNG, WebP (Máx. 5MB)
+            </small>
+          </div>
+          <div id="photo-upload-status" class="mt-3"></div>
+        </div>
+
         <!-- Tasks Statistics -->
         <div class="glass-panel p-4 mb-4">
           <h5 class="text-light mb-4">Minhas Tarefas</h5>

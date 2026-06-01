@@ -1,6 +1,7 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.13.0/firebase-app.js";
 import { getAuth, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.13.0/firebase-auth.js";
 import { getDatabase, ref, onValue, update, get } from "https://www.gstatic.com/firebasejs/12.13.0/firebase-database.js";
+import { getStorage, ref as storageRef, uploadBytes, getDownloadURL, deleteObject } from "https://www.gstatic.com/firebasejs/12.13.0/firebase-storage.js";
 import { firebaseConfig } from "../shared/config.js";
 import StorageManager from "../shared/storage-manager.js";
 
@@ -8,6 +9,7 @@ import StorageManager from "../shared/storage-manager.js";
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getDatabase(app);
+const storage = getStorage(app);
 const storageManager = new StorageManager();
 
 // State
@@ -37,6 +39,11 @@ const profileMessageStatus = document.getElementById('profile-message-status');
 const profileMessageForm = document.getElementById('profile-message-form');
 const btnClearMessage = document.getElementById('btn-clear-message');
 const accountEmail = document.getElementById('account-email');
+
+// Photo Upload Elements
+const profilePhotoInput = document.getElementById('profile-photo-input');
+const btnRemovePhoto = document.getElementById('btn-remove-photo');
+const photoUploadStatus = document.getElementById('photo-upload-status');
 
 // Stats Elements
 const statsTotalTasks = document.getElementById('stats-total-tasks');
@@ -126,7 +133,16 @@ function updateProfileUI() {
 
   // Basic Info
   const initials = currentUser.name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
-  profileAvatarLarge.textContent = initials;
+  
+  // Avatar with photo or initials
+  if (currentUser.photoURL) {
+    profileAvatarLarge.innerHTML = `<img src="${currentUser.photoURL}" alt="Foto de perfil" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;">`;
+    btnRemovePhoto.style.display = 'inline-block';
+  } else {
+    profileAvatarLarge.textContent = initials;
+    btnRemovePhoto.style.display = 'none';
+  }
+  
   profileUserName.textContent = currentUser.name;
   profileUserEmail.textContent = currentUser.email || '--';
   profileUserRole.textContent = currentUser.role;
@@ -210,6 +226,95 @@ btnClearMessage.addEventListener('click', () => {
   if (confirm('Deseja limpar seu recado?')) {
     profileMessageInput.value = '';
     profileMessageForm.dispatchEvent(new Event('submit'));
+  }
+});
+
+// Photo Upload Handler
+profilePhotoInput.addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+
+  // Validate file size (5MB max)
+  if (file.size > 5 * 1024 * 1024) {
+    photoUploadStatus.innerHTML = '<div class="alert alert-danger py-2 px-3 small mb-0">Arquivo muito grande. Máximo 5MB.</div>';
+    return;
+  }
+
+  // Validate file type
+  const validTypes = ['image/jpeg', 'image/png', 'image/webp'];
+  if (!validTypes.includes(file.type)) {
+    photoUploadStatus.innerHTML = '<div class="alert alert-danger py-2 px-3 small mb-0">Tipo de arquivo inválido. Use JPG, PNG ou WebP.</div>';
+    return;
+  }
+
+  try {
+    photoUploadStatus.innerHTML = '<div class="alert alert-info py-2 px-3 small mb-0">Enviando foto...</div>';
+    
+    // Delete previous photo if exists
+    if (currentUser.photoURL) {
+      try {
+        const oldRef = storageRef(storage, `profile-photos/${currentUser.uid}/profile`);
+        await deleteObject(oldRef);
+      } catch (err) {
+        console.log("Não foi possível deletar foto anterior");
+      }
+    }
+
+    // Upload to Firebase Storage with fixed name for easier deletion
+    const fileRef = storageRef(storage, `profile-photos/${currentUser.uid}/profile`);
+    const snapshot = await uploadBytes(fileRef, file);
+    const downloadURL = await getDownloadURL(snapshot.ref);
+
+    // Update user profile with new photo URL
+    await update(ref(db, `users/${currentUser.uid}`), { photoURL: downloadURL });
+    currentUser.photoURL = downloadURL;
+    
+    // Update avatar with photo
+    if (profileAvatarLarge) {
+      profileAvatarLarge.innerHTML = `<img src="${downloadURL}" alt="Foto de perfil" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;">`;
+    }
+
+    photoUploadStatus.innerHTML = '<div class="alert alert-success py-2 px-3 small mb-0">✓ Foto enviada com sucesso!</div>';
+    btnRemovePhoto.style.display = 'inline-block';
+    profilePhotoInput.value = '';
+  } catch (error) {
+    console.error("Erro ao enviar foto:", error);
+    photoUploadStatus.innerHTML = `<div class="alert alert-danger py-2 px-3 small mb-0">Erro ao enviar foto: ${error.message}</div>`;
+  }
+});
+
+// Remove Photo Handler
+btnRemovePhoto.addEventListener('click', async () => {
+  if (!confirm('Deseja remover sua foto de perfil?')) return;
+
+  try {
+    photoUploadStatus.innerHTML = '<div class="alert alert-info py-2 px-3 small mb-0">Removendo foto...</div>';
+    
+    // Delete from storage
+    if (currentUser.photoURL) {
+      try {
+        const fileRef = storageRef(storage, `profile-photos/${currentUser.uid}/profile`);
+        await deleteObject(fileRef);
+      } catch (err) {
+        console.log("Não foi possível deletar arquivo de armazenamento", err);
+      }
+    }
+
+    // Remove from database
+    await update(ref(db, `users/${currentUser.uid}`), { photoURL: null });
+    currentUser.photoURL = null;
+
+    // Reset avatar to initials
+    if (profileAvatarLarge && currentUser.name) {
+      const initials = currentUser.name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
+      profileAvatarLarge.innerHTML = initials;
+    }
+
+    photoUploadStatus.innerHTML = '<div class="alert alert-success py-2 px-3 small mb-0">✓ Foto removida com sucesso!</div>';
+    btnRemovePhoto.style.display = 'none';
+  } catch (error) {
+    console.error("Erro ao remover foto:", error);
+    photoUploadStatus.innerHTML = `<div class="alert alert-danger py-2 px-3 small mb-0">Erro ao remover foto: ${error.message}</div>`;
   }
 });
 
