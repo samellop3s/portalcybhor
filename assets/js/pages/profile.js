@@ -269,13 +269,10 @@ profilePhotoInput.addEventListener('change', async (e) => {
     await update(ref(db, `users/${currentUser.uid}`), { photoURL: downloadURL });
     currentUser.photoURL = downloadURL;
     
-    // Update avatar with photo
-    if (profileAvatarLarge) {
-      profileAvatarLarge.innerHTML = `<img src="${downloadURL}" alt="Foto de perfil" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;">`;
-    }
+    // Update UI completely
+    updateProfileUI();
 
     photoUploadStatus.innerHTML = '<div class="alert alert-success py-2 px-3 small mb-0">✓ Foto enviada com sucesso!</div>';
-    btnRemovePhoto.style.display = 'inline-block';
     profilePhotoInput.value = '';
   } catch (error) {
     console.error("Erro ao enviar foto:", error);
