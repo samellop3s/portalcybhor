@@ -171,6 +171,12 @@ function startAdminRealtimeSync(uid) {
         signOut(auth);
       }
       updateHeader();
+      
+      // Sync mobile drawer if controller is initialized
+      if (window.mobileMenuController) {
+        const initials = currentAdmin.name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
+        window.mobileMenuController.updateUserInfo(currentAdmin.name, currentAdmin.role, initials, currentAdmin.photoURL);
+      }
     }
   });
   activeListeners.push(adminListener);
@@ -249,7 +255,11 @@ function updateHeader() {
   if (!currentAdmin) return;
   headerUserName.textContent = currentAdmin.name;
   const initials = currentAdmin.name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
-  headerUserAvatar.textContent = initials;
+  if (currentAdmin.photoURL) {
+    headerUserAvatar.innerHTML = `<img src="${currentAdmin.photoURL}" alt="Avatar" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;">`;
+  } else {
+    headerUserAvatar.textContent = initials;
+  }
 }
 
 /* ==========================================

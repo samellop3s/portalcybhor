@@ -20,6 +20,9 @@
         },
         "profileCreatedAt": {
           ".validate": "newData.isNumber()"
+        },
+        "photoURL": {
+          ".validate": "newData.isString() && (newData.val().matches(/^https?:\\/\\/.+$/) || newData.val() === '')"
         }
       }
     },

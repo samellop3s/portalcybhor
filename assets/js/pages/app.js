@@ -206,6 +206,13 @@ function startRealtimeSync(uid) {
       }
       updateHeader();
       updatePermissionsUI();
+      
+      // Sync mobile drawer if controller is initialized
+      if (window.mobileMenuController) {
+        const initials = currentUser.name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
+        window.mobileMenuController.updateUserInfo(currentUser.name, currentUser.role, initials, currentUser.photoURL);
+      }
+      
       // renderUserProfilePanel() moved to profile.html
       renderIdeas();
     }
@@ -322,9 +329,13 @@ function updateHeader() {
   
   headerUserRoleBadge.innerHTML = `<span class="badge ${badgeClass}">${currentUser.role}</span>`;
   
-  // Set Initials Avatar
+  // Set Initials or Photo Avatar
   const initials = currentUser.name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
-  headerUserAvatar.textContent = initials;
+  if (currentUser.photoURL) {
+    headerUserAvatar.innerHTML = `<img src="${currentUser.photoURL}" alt="Avatar" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;">`;
+  } else {
+    headerUserAvatar.textContent = initials;
+  }
 }
 
 // renderUserProfilePanel moved to profile.html page

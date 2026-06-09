@@ -161,7 +161,7 @@ class MobileMenuController {
   }
 
   // Atualiza informações do usuário na gaveta
-  updateUserInfo(userName, userRole, userInitials) {
+  updateUserInfo(userName, userRole, userInitials, photoURL) {
     const userSection = document.getElementById('drawer-user-section');
     const userNameEl = document.getElementById('drawer-user-name');
     const userRoleEl = document.getElementById('drawer-user-role');
@@ -177,7 +177,11 @@ class MobileMenuController {
       userRoleEl.textContent = userRole || 'Membro';
     }
     if (userAvatarEl) {
-      userAvatarEl.textContent = userInitials || '--';
+      if (photoURL) {
+        userAvatarEl.innerHTML = `<img src="${photoURL}" alt="Avatar" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;">`;
+      } else {
+        userAvatarEl.textContent = userInitials || '--';
+      }
     }
   }
 

@@ -95,15 +95,48 @@ onAuthStateChanged(auth, async (user) => {
   }
 });
 
+async function ensureUserProfileDefaults(uid, userData) {
+  const updates = {};
+
+  if (typeof userData.profileMessage === 'undefined' || userData.profileMessage === null) {
+    updates.profileMessage = '';
+  }
+
+  if (typeof userData.profileCreatedAt === 'undefined' || userData.profileCreatedAt === null) {
+    updates.profileCreatedAt = Date.now();
+  }
+
+  if (!userData.name || userData.name.trim().length === 0) {
+    updates.name = 'Usuário Cybhor';
+  }
+
+  if (!userData.email) {
+    updates.email = '';
+  }
+
+  if (!userData.role) {
+    updates.role = 'Integrante';
+  }
+
+  if (Object.keys(updates).length > 0) {
+    await update(ref(db, `users/${uid}`), updates);
+  }
+}
+
 function startRealtimeSync(uid) {
   // Load cached tasks
   const cachedTasks = storageManager.loadTasks();
   if (Object.keys(cachedTasks).length > 0) allTasks = cachedTasks;
 
   // Sync current user
-  const userListener = onValue(ref(db, `users/${uid}`), (snapshot) => {
+  const userListener = onValue(ref(db, `users/${uid}`), async (snapshot) => {
     if (snapshot.exists()) {
       currentUser = { uid, ...snapshot.val() };
+      await ensureUserProfileDefaults(uid, currentUser);
+      const refreshedSnapshot = await get(ref(db, `users/${uid}`));
+      if (refreshedSnapshot.exists()) {
+        currentUser = { uid, ...refreshedSnapshot.val() };
+      }
       updateProfileUI();
     }
   });
@@ -133,6 +166,11 @@ function updateProfileUI() {
 
   // Basic Info
   const initials = currentUser.name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
+
+  // Sync mobile drawer if controller is initialized
+  if (window.mobileMenuController) {
+    window.mobileMenuController.updateUserInfo(currentUser.name, currentUser.role, initials, currentUser.photoURL);
+  }
   
   // Avatar with photo or initials
   if (currentUser.photoURL) {
@@ -231,6 +269,7 @@ btnClearMessage.addEventListener('click', () => {
 
 // Photo Upload Handler
 profilePhotoInput.addEventListener('change', async (e) => {
+  if (!currentUser) return;
   const file = e.target.files[0];
   if (!file) return;
 
