@@ -1,6 +1,7 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.13.0/firebase-app.js";
 import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.13.0/firebase-auth.js";
 import { getDatabase, ref, set, push, onValue, update, remove, get } from "https://www.gstatic.com/firebasejs/12.13.0/firebase-database.js";
+import { getStorage, ref as sRef, uploadBytes, getDownloadURL, deleteObject } from "https://www.gstatic.com/firebasejs/12.13.0/firebase-storage.js";
 import { firebaseConfig } from "../shared/config.js";
 import StorageManager from "../shared/storage-manager.js";
 
@@ -8,6 +9,7 @@ import StorageManager from "../shared/storage-manager.js";
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getDatabase(app);
+const storage = getStorage(app);
 
 // Initialize Storage Manager for local persistence
 const storageManager = new StorageManager();
@@ -512,9 +514,7 @@ function renderKanban() {
     // Admin check for delete button
     const deleteColBtn = currentUser && currentUser.role === 'Admin' 
       ? `<button class="btn btn-link text-danger p-0 delete-stage-btn" data-stage-id="${stageId}"><i data-lucide="trash-2" style="width: 16px;"></i></button>`
-      : '';
-
-    // Render header
+      : '';    // Render header
     colDiv.innerHTML = `
       <div class="column-header">
         <h6 class="column-title"><i data-lucide="folder" class="text-info" style="width:16px;"></i> ${stage.title}</h6>
@@ -523,9 +523,12 @@ function renderKanban() {
       <div class="task-list" id="task-list-${stageId}" data-stage-id="${stageId}">
         <!-- Tasks rendered here -->
       </div>
-      <div class="mt-3">
+      <div class="mt-3 d-flex flex-column gap-2">
         <button class="btn btn-cyber w-100 py-1.5 open-add-task-btn" data-stage-id="${stageId}" ${currentUser && currentUser.role === 'Visualizador' ? 'disabled' : ''}>
           <i data-lucide="plus" style="width: 16px;"></i> Adicionar Tarefa
+        </button>
+        <button class="btn btn-cyber-secondary w-100 py-1.5 open-stage-chat-btn" data-stage-id="${stageId}">
+          <i data-lucide="messages-square" style="width: 16px;"></i> Abrir Chat da Etapa
         </button>
       </div>
     `;
@@ -565,7 +568,7 @@ function renderKanban() {
         const deleteBtn = canDelete 
           ? `<button class="btn btn-sm btn-link text-danger p-0 delete-task-btn ms-2" data-task-id="${task.id}"><i data-lucide="trash-2" style="width: 14px;"></i></button>` 
           : '';
-
+ 
         taskCard.innerHTML = `
           <span class="task-priority priority-${task.priority}">${task.priority === 'high' ? 'Alta' : task.priority === 'medium' ? 'Média' : 'Baixa'}</span>
           <h6 class="text-light mb-1">${task.title}</h6>
@@ -573,11 +576,15 @@ function renderKanban() {
           <div class="d-flex justify-content-between align-items-center">
             <div class="d-flex align-items-center gap-2">
               <div class="user-avatar" style="width: 24px; height: 24px; font-size: 0.65rem; box-shadow: none;" title="${assignee}">${initials}</div>
-              <span class="text-muted small text-truncate" style="max-width: 110px;">${assignee}</span>
+              <span class="text-muted small text-truncate" style="max-width: 100px;">${assignee}</span>
             </div>
             <div class="task-actions">
               ${leftBtn}
               ${rightBtn}
+              <!-- Details & Chat button -->
+              <button class="btn btn-sm btn-link text-info open-task-details-btn p-0 ms-1" data-task-id="${task.id}" title="Ver detalhes, chat e anexos">
+                <i data-lucide="message-square" style="width:14px;"></i>
+              </button>
               <!-- Completion buttons -->
               <button class="btn btn-sm btn-cyber-success complete-task-btn ms-1" data-task-id="${task.id}" title="Concluir tarefa com sucesso">
                 <i data-lucide="check" style="width:14px;"></i>
@@ -588,7 +595,7 @@ function renderKanban() {
               ${deleteBtn}
             </div>
           </div>
-        `;
+        `;  `;
         
         // Reflect task status visually
         if (task.status === 'done') taskCard.classList.add('done');
@@ -750,6 +757,22 @@ function attachKanbanClickHandlers(sortedStageKeys) {
       }
     });
   });
+
+  // Stage Chat Handler
+  document.querySelectorAll('.open-stage-chat-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const stageId = btn.getAttribute('data-stage-id');
+      openStageChat(stageId);
+    });
+  });
+
+  // Task Details Handler
+  document.querySelectorAll('.open-task-details-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const taskId = btn.getAttribute('data-task-id');
+      openTaskDetails(taskId);
+    });
+  });
 }
 
 // Add Stage Submission
@@ -811,4 +834,385 @@ addTaskForm.addEventListener('submit', async (e) => {
 function renderIdeas() {
   // Ideas rendering moved to dedicated ideas.html page
   // This stub kept for backward compatibility with startRealtimeSync()
+}
+
+// ============================================
+// CHAT & ATTACHMENTS FOR STAGES & TASKS
+// ============================================
+
+function escapeHTML(str) {
+  if (!str) return '';
+  return str.replace(/[&<>'"]/g, 
+    tag => ({
+      '&': '&amp;',
+      '<': '&lt;',
+      '>': '&gt;',
+      "'": '&#39;',
+      '"': '&quot;'
+    }[tag] || tag)
+  );
+}
+
+let unsubscribeStageChat = null;
+const stageChatModalEl = document.getElementById('stageChatModal');
+let stageChatModal = null;
+
+if (stageChatModalEl) {
+  stageChatModal = new bootstrap.Modal(stageChatModalEl);
+  stageChatModalEl.addEventListener('hidden.bs.modal', () => {
+    if (unsubscribeStageChat) {
+      unsubscribeStageChat();
+      unsubscribeStageChat = null;
+    }
+  });
+}
+
+function openStageChat(stageId) {
+  if (!stages[stageId]) return;
+  
+  document.getElementById('stage-chat-title-span').textContent = stages[stageId].title;
+  
+  const messagesContainer = document.getElementById('stage-chat-messages');
+  messagesContainer.innerHTML = '<div class="text-center py-4 text-muted small"><div class="spinner-border spinner-border-sm text-info me-2"></div>Carregando mensagens...</div>';
+  
+  const chatForm = document.getElementById('stage-chat-form');
+  chatForm.reset();
+  
+  if (unsubscribeStageChat) {
+    unsubscribeStageChat();
+    unsubscribeStageChat = null;
+  }
+  
+  const chatRef = ref(db, `stage-chats/${stageId}/messages`);
+  unsubscribeStageChat = onValue(chatRef, (snapshot) => {
+    messagesContainer.innerHTML = '';
+    
+    if (!snapshot.exists()) {
+      messagesContainer.innerHTML = '<div class="text-center py-4 text-muted small">Nenhuma mensagem nesta etapa ainda. Envie a primeira!</div>';
+      return;
+    }
+    
+    snapshot.forEach((childSnapshot) => {
+      const msg = childSnapshot.val();
+      const isMine = msg.senderId === (currentUser ? currentUser.uid : null);
+      
+      const messageDiv = document.createElement('div');
+      messageDiv.className = `chat-message ${isMine ? 'message-mine' : 'message-other'}`;
+      
+      const timeStr = new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      const dateStr = new Date(msg.timestamp).toLocaleDateString([], { day: '2-digit', month: '2-digit' });
+      
+      messageDiv.innerHTML = `
+        <div class="message-info">${isMine ? 'Você' : msg.senderName} • ${dateStr} às ${timeStr}</div>
+        <div class="message-bubble rounded shadow-sm">${escapeHTML(msg.text)}</div>
+      `;
+      
+      messagesContainer.appendChild(messageDiv);
+    });
+    
+    messagesContainer.scrollTop = messagesContainer.scrollHeight;
+  });
+  
+  chatForm.onsubmit = async (e) => {
+    e.preventDefault();
+    if (!currentUser) {
+      alert("Você precisa estar logado para enviar mensagens.");
+      return;
+    }
+    
+    const input = document.getElementById('stage-chat-input');
+    const text = input.value.trim();
+    if (!text) return;
+    
+    try {
+      const newMsgRef = push(ref(db, `stage-chats/${stageId}/messages`));
+      await set(newMsgRef, {
+        senderId: currentUser.uid,
+        senderName: currentUser.name,
+        text: text,
+        timestamp: Date.now()
+      });
+      input.value = '';
+    } catch (error) {
+      console.error("Erro ao enviar mensagem na etapa:", error);
+      alert("Erro ao enviar mensagem: permissão negada.");
+    }
+  };
+  
+  stageChatModal.show();
+}
+
+let unsubscribeTaskChat = null;
+let unsubscribeTaskAttachments = null;
+const taskDetailsModalEl = document.getElementById('taskDetailsModal');
+let taskDetailsModal = null;
+
+if (taskDetailsModalEl) {
+  taskDetailsModal = new bootstrap.Modal(taskDetailsModalEl);
+  taskDetailsModalEl.addEventListener('hidden.bs.modal', () => {
+    if (unsubscribeTaskChat) {
+      unsubscribeTaskChat();
+      unsubscribeTaskChat = null;
+    }
+    if (unsubscribeTaskAttachments) {
+      unsubscribeTaskAttachments();
+      unsubscribeTaskAttachments = null;
+    }
+  });
+}
+
+function openTaskDetails(taskId) {
+  const task = tasks[taskId];
+  if (!task) return;
+  
+  document.getElementById('task-details-title').textContent = task.title;
+  
+  const priorityEl = document.getElementById('task-details-priority');
+  priorityEl.className = `task-priority priority-${task.priority}`;
+  priorityEl.textContent = task.priority === 'high' ? 'Alta' : task.priority === 'medium' ? 'Média' : 'Baixa';
+  
+  const statusEl = document.getElementById('task-details-status');
+  statusEl.textContent = task.status === 'done' ? 'Concluída' : task.status === 'failed' ? 'Falhou' : 'Pendente';
+  statusEl.className = `badge ${task.status === 'done' ? 'bg-success' : task.status === 'failed' ? 'bg-danger' : 'bg-warning text-dark'}`;
+  
+  document.getElementById('task-details-description').textContent = task.description;
+  
+  const assignee = allUsers[task.assigneeId] ? allUsers[task.assigneeId].name : 'Desconhecido';
+  const assigneeInitials = assignee.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
+  document.getElementById('task-details-assignee-name').textContent = assignee;
+  
+  const assigneeAvatarEl = document.getElementById('task-details-assignee-avatar');
+  const assigneeUser = allUsers[task.assigneeId];
+  if (assigneeUser && assigneeUser.photoURL) {
+    assigneeAvatarEl.innerHTML = `<img src="${assigneeUser.photoURL}" alt="" style="width:100%; height:100%; border-radius:50%; object-fit:cover;">`;
+  } else {
+    assigneeAvatarEl.innerHTML = assigneeInitials;
+  }
+  
+  const creator = allUsers[task.creatorId] ? allUsers[task.creatorId].name : 'Desconhecido';
+  document.getElementById('task-details-creator-name').textContent = creator;
+  
+  document.getElementById('task-details-created-at').textContent = new Date(task.createdAt).toLocaleString([], { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+  document.getElementById('task-details-scheduled-at').textContent = new Date(task.scheduledAt).toLocaleString([], { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+  
+  // Chat
+  const chatMessagesContainer = document.getElementById('task-chat-messages');
+  chatMessagesContainer.innerHTML = '<div class="text-center py-3 text-muted small"><div class="spinner-border spinner-border-sm text-info me-2"></div>Carregando chat...</div>';
+  
+  const chatForm = document.getElementById('task-chat-form');
+  chatForm.reset();
+  
+  if (unsubscribeTaskChat) {
+    unsubscribeTaskChat();
+    unsubscribeTaskChat = null;
+  }
+  
+  unsubscribeTaskChat = onValue(ref(db, `task-chats/${taskId}/messages`), (snapshot) => {
+    chatMessagesContainer.innerHTML = '';
+    
+    if (!snapshot.exists()) {
+      chatMessagesContainer.innerHTML = '<div class="text-center py-4 text-muted small">Nenhuma mensagem neste chat ainda.</div>';
+      return;
+    }
+    
+    snapshot.forEach((childSnapshot) => {
+      const msg = childSnapshot.val();
+      const isMine = msg.senderId === (currentUser ? currentUser.uid : null);
+      
+      const messageDiv = document.createElement('div');
+      messageDiv.className = `chat-message ${isMine ? 'message-mine' : 'message-other'}`;
+      
+      const timeStr = new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      
+      messageDiv.innerHTML = `
+        <div class="message-info">${isMine ? 'Você' : msg.senderName} • ${timeStr}</div>
+        <div class="message-bubble rounded shadow-sm">${escapeHTML(msg.text)}</div>
+      `;
+      
+      chatMessagesContainer.appendChild(messageDiv);
+    });
+    
+    chatMessagesContainer.scrollTop = chatMessagesContainer.scrollHeight;
+  });
+  
+  chatForm.onsubmit = async (e) => {
+    e.preventDefault();
+    if (!currentUser) return;
+    
+    const input = document.getElementById('task-chat-input');
+    const text = input.value.trim();
+    if (!text) return;
+    
+    try {
+      const newMsgRef = push(ref(db, `task-chats/${taskId}/messages`));
+      await set(newMsgRef, {
+        senderId: currentUser.uid,
+        senderName: currentUser.name,
+        text: text,
+        timestamp: Date.now()
+      });
+      input.value = '';
+    } catch (error) {
+      console.error("Erro ao enviar mensagem na tarefa:", error);
+      alert("Erro ao enviar mensagem: permissão negada.");
+    }
+  };
+  
+  // Attachments
+  const attachmentsListContainer = document.getElementById('task-attachments-list');
+  attachmentsListContainer.innerHTML = '<div class="text-center py-3 text-muted small">Carregando anexos...</div>';
+  
+  const uploadFileInput = document.getElementById('task-attachment-file');
+  uploadFileInput.value = '';
+  
+  const btnUpload = document.getElementById('btn-upload-attachment');
+  const progressContainer = document.getElementById('upload-progress-container');
+  const progressBar = document.getElementById('upload-progress-bar');
+  
+  progressContainer.classList.add('d-none');
+  progressBar.style.width = '0%';
+  
+  if (unsubscribeTaskAttachments) {
+    unsubscribeTaskAttachments();
+    unsubscribeTaskAttachments = null;
+  }
+  
+  unsubscribeTaskAttachments = onValue(ref(db, `task-attachments/${taskId}/attachments`), (snapshot) => {
+    attachmentsListContainer.innerHTML = '';
+    
+    if (!snapshot.exists()) {
+      attachmentsListContainer.innerHTML = '<div class="text-center py-4 text-muted small">Nenhum anexo nesta tarefa.</div>';
+      return;
+    }
+    
+    snapshot.forEach((childSnapshot) => {
+      const file = childSnapshot.val();
+      const isMine = file.uploadedBy === (currentUser ? currentUser.uid : null);
+      const isAdmin = currentUser && currentUser.role === 'Admin';
+      
+      const itemDiv = document.createElement('div');
+      itemDiv.className = 'attachment-item';
+      
+      const isImage = file.type.startsWith('image/');
+      let mediaPreview = '';
+      if (isImage) {
+        mediaPreview = `<img class="attachment-thumb" src="${file.url}" alt="${file.name}" />`;
+      } else {
+        let iconName = 'file';
+        if (file.type === 'application/pdf') iconName = 'file-text';
+        else if (file.type.includes('word') || file.type.includes('officedocument')) iconName = 'file-type-2';
+        
+        mediaPreview = `
+          <div class="attachment-icon-wrapper">
+            <i data-lucide="${iconName}" style="width: 18px; height: 18px;"></i>
+          </div>
+        `;
+      }
+      
+      const canDelete = isMine || isAdmin;
+      const deleteBtnMarkup = canDelete 
+        ? `<button class="btn btn-sm btn-link text-danger p-1 delete-attachment-btn" data-attachment-id="${file.id}" data-path="${file.path}"><i data-lucide="trash-2" style="width: 16px;"></i></button>`
+        : '';
+        
+      itemDiv.innerHTML = `
+        <div class="attachment-meta">
+          ${mediaPreview}
+          <div class="attachment-name-box">
+            <a href="${file.url}" target="_blank" class="attachment-name text-truncate d-block" style="max-width: 170px;" title="${file.name}">${file.name}</a>
+            <div class="attachment-info-sub">Por ${file.uploadedByName}</div>
+          </div>
+        </div>
+        <div>
+          ${deleteBtnMarkup}
+        </div>
+      `;
+      
+      attachmentsListContainer.appendChild(itemDiv);
+    });
+    
+    if (window.lucide) lucide.createIcons();
+    
+    attachmentsListContainer.querySelectorAll('.delete-attachment-btn').forEach(btn => {
+      btn.onclick = async () => {
+        const fileId = btn.getAttribute('data-attachment-id');
+        const filePath = btn.getAttribute('data-path');
+        if (!confirm("Deseja realmente excluir este anexo?")) return;
+        
+        try {
+          const storageFileRef = sRef(storage, filePath);
+          await deleteObject(storageFileRef);
+          await remove(ref(db, `task-attachments/${taskId}/attachments/${fileId}`));
+        } catch (error) {
+          console.error("Erro ao deletar anexo:", error);
+          alert("Erro ao excluir o anexo: " + error.message);
+        }
+      };
+    });
+  });
+  
+  btnUpload.onclick = async () => {
+    if (!currentUser) return;
+    if (currentUser.role === 'Visualizador') {
+      alert("Visualizadores não podem enviar arquivos.");
+      return;
+    }
+    
+    const file = uploadFileInput.files[0];
+    if (!file) {
+      alert("Selecione um arquivo primeiro.");
+      return;
+    }
+    
+    if (file.size > 10 * 1024 * 1024) {
+      alert("O arquivo não pode exceder o tamanho máximo de 10MB.");
+      return;
+    }
+    
+    btnUpload.disabled = true;
+    progressContainer.classList.remove('d-none');
+    progressBar.style.width = '0%';
+    
+    const fileStoragePath = `task-attachments/${taskId}/${Date.now()}_${file.name}`;
+    const fileRef = sRef(storage, fileStoragePath);
+    
+    try {
+      progressBar.style.width = '50%';
+      await uploadBytes(fileRef, file);
+      progressBar.style.width = '100%';
+      
+      const downloadURL = await getDownloadURL(fileRef);
+      
+      const attachmentId = push(ref(db)).key;
+      await set(ref(db, `task-attachments/${taskId}/attachments/${attachmentId}`), {
+        id: attachmentId,
+        name: file.name,
+        url: downloadURL,
+        type: file.type || 'application/octet-stream',
+        path: fileStoragePath,
+        uploadedBy: currentUser.uid,
+        uploadedByName: currentUser.name,
+        uploadedAt: Date.now()
+      });
+      
+      uploadFileInput.value = '';
+      setTimeout(() => {
+        progressContainer.classList.add('d-none');
+        progressBar.style.width = '0%';
+        btnUpload.disabled = false;
+      }, 1000);
+      
+    } catch (error) {
+      console.error("Erro no upload do arquivo:", error);
+      alert("Erro ao enviar o arquivo: " + error.message);
+      progressContainer.classList.add('d-none');
+      btnUpload.disabled = false;
+    }
+  };
+  
+  const chatTabButton = document.getElementById('task-chat-tab');
+  if (chatTabButton) {
+    bootstrap.Tab.getOrCreateInstance(chatTabButton).show();
+  }
+  
+  taskDetailsModal.show();
 }

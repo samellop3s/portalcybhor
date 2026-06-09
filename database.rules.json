@@ -49,6 +49,39 @@
           }
         }
       }
+    },
+    "stage-chats": {
+      "$stageId": {
+        "messages": {
+          "$messageId": {
+            ".read": "auth != null",
+            ".write": "auth != null",
+            ".validate": "newData.hasChildren(['senderId', 'senderName', 'text', 'timestamp']) && newData.child('senderId').val() === auth.uid && newData.child('text').isString() && newData.child('text').val().length <= 500 && newData.child('timestamp').isNumber()"
+          }
+        }
+      }
+    },
+    "task-chats": {
+      "$taskId": {
+        "messages": {
+          "$messageId": {
+            ".read": "auth != null",
+            ".write": "auth != null",
+            ".validate": "newData.hasChildren(['senderId', 'senderName', 'text', 'timestamp']) && newData.child('senderId').val() === auth.uid && newData.child('text').isString() && newData.child('text').val().length <= 500 && newData.child('timestamp').isNumber()"
+          }
+        }
+      }
+    },
+    "task-attachments": {
+      "$taskId": {
+        "attachments": {
+          "$attachmentId": {
+            ".read": "auth != null",
+            ".write": "auth != null && (!data.exists() || data.child('uploadedBy').val() === auth.uid || root.child('users').child(auth.uid).child('role').val() === 'Admin')",
+            ".validate": "newData.hasChildren(['id', 'name', 'url', 'type', 'path', 'uploadedBy', 'uploadedByName', 'uploadedAt']) && newData.child('uploadedBy').val() === auth.uid && newData.child('url').isString() && newData.child('path').isString() && newData.child('uploadedAt').isNumber()"
+          }
+        }
+      }
     }
   }
 }

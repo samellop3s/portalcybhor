@@ -245,6 +245,147 @@
     </div>
   </div>
 
+  <!-- Stage Chat Modal -->
+  <div class="modal fade" id="stageChatModal" tabindex="-1" aria-labelledby="stageChatModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+      <div class="modal-content modal-content-cyber">
+        <div class="modal-header modal-header-cyber">
+          <h5 class="modal-title text-info" id="stageChatModalLabel">
+            <i data-lucide="messages-square" class="me-2 text-accent"></i>Chat da Etapa: <span id="stage-chat-title-span">--</span>
+          </h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body p-0">
+          <div class="chat-container">
+            <div class="chat-messages" id="stage-chat-messages" style="height: 380px; overflow-y: auto; padding: 1.5rem;">
+              <!-- Realtime messages -->
+            </div>
+            <div class="chat-footer p-3 border-top border-secondary border-opacity-10">
+              <form id="stage-chat-form">
+                <div class="input-group">
+                  <input type="text" id="stage-chat-input" class="form-control form-control-cyber" placeholder="Escreva uma mensagem..." required autocomplete="off" maxlength="500">
+                  <button type="submit" class="btn btn-cyber">Enviar</button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Task Details Modal (Dual Pane) -->
+  <div class="modal fade" id="taskDetailsModal" tabindex="-1" aria-labelledby="taskDetailsModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+      <div class="modal-content modal-content-cyber">
+        <div class="modal-header modal-header-cyber">
+          <h5 class="modal-title text-info" id="taskDetailsModalLabel">
+            <i data-lucide="info" class="me-2 text-accent"></i>Detalhes da Tarefa
+          </h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body p-4">
+          <div class="row g-4">
+            <!-- Left Pane: Task Details -->
+            <div class="col-lg-6 border-end border-secondary border-opacity-10 pe-lg-4">
+              <div class="d-flex justify-content-between align-items-center mb-3">
+                <span id="task-details-priority" class="task-priority">--</span>
+                <span id="task-details-status" class="badge">--</span>
+              </div>
+              <h4 id="task-details-title" class="text-light mb-3 neon-glow-cyan font-monospace">--</h4>
+              <div class="mb-3">
+                <label class="form-label text-muted small d-block">Descrição</label>
+                <div id="task-details-description" class="task-description-box p-3 bg-secondary bg-opacity-10 border border-secondary border-opacity-10 rounded text-light" style="white-space: pre-wrap; max-height: 200px; overflow-y: auto;">
+                  --
+                </div>
+              </div>
+              <div class="row">
+                <div class="col-6 mb-3">
+                  <label class="form-label text-muted small d-block">Responsável</label>
+                  <div class="d-flex align-items-center gap-2">
+                    <div id="task-details-assignee-avatar" class="user-avatar" style="width: 28px; height: 28px; font-size: 0.75rem;">--</div>
+                    <span id="task-details-assignee-name" class="text-light small">--</span>
+                  </div>
+                </div>
+                <div class="col-6 mb-3">
+                  <label class="form-label text-muted small d-block">Criado por</label>
+                  <span id="task-details-creator-name" class="text-light small">--</span>
+                </div>
+              </div>
+              <div class="row">
+                <div class="col-6">
+                  <label class="form-label text-muted small d-block">Criada em</label>
+                  <span id="task-details-created-at" class="text-muted small">--</span>
+                </div>
+                <div class="col-6">
+                  <label class="form-label text-muted small d-block">Agendada para</label>
+                  <span id="task-details-scheduled-at" class="text-muted small">--</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Right Pane: Tabs (Chat & Attachments) -->
+            <div class="col-lg-6 ps-lg-4">
+              <!-- Navigation Tabs -->
+              <ul class="nav nav-tabs nav-tabs-cyber mb-3" id="taskDetailsTabs" role="tablist">
+                <li class="nav-item" role="presentation">
+                  <button class="nav-link active" id="task-chat-tab" data-bs-toggle="tab" data-bs-target="#task-chat-pane" type="button" role="tab" aria-controls="task-chat-pane" aria-selected="true">
+                    <i data-lucide="message-square" class="me-1" style="width: 14px;"></i> Chat
+                  </button>
+                </li>
+                <li class="nav-item" role="presentation">
+                  <button class="nav-link" id="task-attachments-tab" data-bs-toggle="tab" data-bs-target="#task-attachments-pane" type="button" role="tab" aria-controls="task-attachments-pane" aria-selected="false">
+                    <i data-lucide="paperclip" class="me-1" style="width: 14px;"></i> Anexos
+                  </button>
+                </li>
+              </ul>
+              
+              <div class="tab-content" id="taskDetailsTabsContent">
+                <!-- Chat Tab -->
+                <div class="tab-pane fade show active" id="task-chat-pane" role="tabpanel" aria-labelledby="task-chat-tab">
+                  <div class="chat-container border border-secondary border-opacity-10 rounded">
+                    <div class="chat-messages" id="task-chat-messages" style="height: 250px; overflow-y: auto; padding: 1rem;">
+                      <!-- Realtime task messages -->
+                    </div>
+                    <div class="chat-footer p-2 border-top border-secondary border-opacity-10">
+                      <form id="task-chat-form">
+                        <div class="input-group">
+                          <input type="text" id="task-chat-input" class="form-control form-control-cyber py-1.5 small" placeholder="Escreva no chat..." required autocomplete="off" maxlength="500">
+                          <button type="submit" class="btn btn-cyber py-1">Enviar</button>
+                        </div>
+                      </form>
+                    </div>
+                  </div>
+                </div>
+                
+                <!-- Attachments Tab -->
+                <div class="tab-pane fade" id="task-attachments-pane" role="tabpanel" aria-labelledby="task-attachments-tab">
+                  <div class="attachments-container border border-secondary border-opacity-10 rounded p-3" style="min-height: 310px; display: flex; flex-direction: column;">
+                    <!-- Upload Box -->
+                    <div class="mb-3">
+                      <label class="form-label text-muted small">Adicionar Anexo</label>
+                      <div class="input-group">
+                        <input type="file" id="task-attachment-file" class="form-control form-control-cyber" style="font-size: 0.85rem;">
+                        <button type="button" id="btn-upload-attachment" class="btn btn-cyber py-1.5"><i data-lucide="upload" style="width: 16px;"></i> Upload</button>
+                      </div>
+                      <div class="progress d-none mt-2" id="upload-progress-container" style="height: 6px; background: rgba(255,255,255,0.05);">
+                        <div class="progress-bar bg-info" id="upload-progress-bar" role="progressbar" style="width: 0%; transition: width 0.1s ease;"></div>
+                      </div>
+                    </div>
+                    <!-- Attachments List -->
+                    <div class="attachments-list flex-grow-1" id="task-attachments-list" style="max-height: 180px; overflow-y: auto;">
+                      <!-- Realtime files list -->
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- Bootstrap 5.3 JS -->
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
   <!-- Mobile Menu Controller -->
