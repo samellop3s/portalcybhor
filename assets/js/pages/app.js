@@ -595,7 +595,7 @@ function renderKanban() {
               ${deleteBtn}
             </div>
           </div>
-        `;  `;
+        `;
         
         // Reflect task status visually
         if (task.status === 'done') taskCard.classList.add('done');
