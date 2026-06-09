@@ -345,6 +345,7 @@ promoteIdeaForm.addEventListener('submit', async (e) => {
 
   try {
     const newTaskRef = push(ref(db, 'tasks'));
+    const now = Date.now();
     await set(newTaskRef, {
       title: `[IDEIA] ${idea.title}`,
       description: idea.description,
@@ -352,7 +353,9 @@ promoteIdeaForm.addEventListener('submit', async (e) => {
       assigneeId,
       stageId,
       creatorId: currentUser.uid,
-      createdAt: Date.now()
+      createdAt: now,
+      scheduledAt: now,
+      status: 'pending'
     });
 
     await update(ref(db, `ideas/${ideaId}`), { status: 'approved' });
