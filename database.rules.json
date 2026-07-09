@@ -4,7 +4,7 @@
     "users": {
       "$uid": {
         ".read": "auth != null",
-        ".write": "auth != null && (root.child('users').child(auth.uid).child('role').val() === 'Admin' || (auth.uid === $uid && (!data.exists() || newData.child('role').val() === data.child('role').val())))",
+        ".write": "auth != null && (root.child('users').child(auth.uid).child('role').val() == 'Admin' || (auth.uid === $uid && (!data.exists() || newData.child('role').val() === data.child('role').val())))",
         ".validate": "newData.hasChildren(['name', 'email', 'role', 'profileMessage', 'profileCreatedAt']) && newData.child('name').isString() && newData.child('name').val().length > 0 && newData.child('name').val().length <= 80 && newData.child('email').isString() && newData.child('email').val().matches(/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/) && newData.child('role').val().matches(/^(Integrante|Admin|Visualizador)$/) && newData.child('profileMessage').isString() && newData.child('profileMessage').val().length <= 300 && newData.child('profileCreatedAt').isNumber() && (!newData.hasChild('photoURL') || newData.child('photoURL').isString()) && (!data.exists() || newData.child('profileCreatedAt').val() === data.child('profileCreatedAt').val())",
         "role": {
           ".validate": "newData.val().matches(/^(Integrante|Admin|Visualizador)$/)"
