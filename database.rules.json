@@ -33,7 +33,7 @@
     "tasks": {
       ".read": "auth != null",
       "$taskId": {
-        ".write": "auth != null && (root.child('users').child(auth.uid).child('role').val() === 'Admin' || (!data.exists() && newData.child('creatorId').val() === auth.uid) || (data.exists() && (auth.uid === data.child('creatorId').val() || auth.uid === data.child('assigneeId').val())))",
+        ".write": "auth != null && (root.child('users').child(auth.uid).child('role').val() === 'Admin' || root.child('users').child(auth.uid).child('role').val() === 'Integrante' || (!data.exists() && newData.child('creatorId').val() === auth.uid) || (data.exists() && (auth.uid === data.child('creatorId').val() || auth.uid === data.child('assigneeId').val())))",
         ".validate": "newData.hasChildren(['title', 'description', 'priority', 'assigneeId', 'stageId', 'creatorId', 'createdAt', 'scheduledAt', 'status']) && newData.child('title').isString() && newData.child('title').val().length > 0 && newData.child('title').val().length <= 120 && newData.child('description').isString() && newData.child('description').val().length <= 2000 && newData.child('priority').val().matches(/^(low|medium|high)$/) && newData.child('assigneeId').isString() && newData.child('stageId').isString() && newData.child('creatorId').isString() && newData.child('createdAt').isNumber() && newData.child('scheduledAt').isNumber() && newData.child('status').val().matches(/^(pending|done|failed)$/) && (!data.exists() || newData.child('creatorId').val() === data.child('creatorId').val()) && (!data.exists() || newData.child('createdAt').val() === data.child('createdAt').val()) && (!data.exists() || newData.child('scheduledAt').val() === data.child('scheduledAt').val())"
       }
     },
@@ -55,7 +55,7 @@
         "messages": {
           "$messageId": {
             ".read": "auth != null",
-            ".write": "auth != null",
+            ".write": "auth != null && (!data.exists() || data.child('senderId').val() === auth.uid || root.child('users').child(auth.uid).child('role').val() === 'Admin')",
             ".validate": "newData.hasChildren(['senderId', 'senderName', 'text', 'timestamp']) && newData.child('senderId').val() === auth.uid && newData.child('text').isString() && newData.child('text').val().length <= 500 && newData.child('timestamp').isNumber()"
           }
         }
@@ -66,7 +66,7 @@
         "messages": {
           "$messageId": {
             ".read": "auth != null",
-            ".write": "auth != null",
+            ".write": "auth != null && (!data.exists() || data.child('senderId').val() === auth.uid || root.child('users').child(auth.uid).child('role').val() === 'Admin')",
             ".validate": "newData.hasChildren(['senderId', 'senderName', 'text', 'timestamp']) && newData.child('senderId').val() === auth.uid && newData.child('text').isString() && newData.child('text').val().length <= 500 && newData.child('timestamp').isNumber()"
           }
         }
