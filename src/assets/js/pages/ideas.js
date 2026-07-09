@@ -1,14 +1,8 @@
-import { initializeApp } from "https://www.gstatic.com/firebasejs/12.13.0/firebase-app.js";
-import { getAuth, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.13.0/firebase-auth.js";
-import { getDatabase, ref, set, push, onValue, update, remove, get } from "https://www.gstatic.com/firebasejs/12.13.0/firebase-database.js";
-import { firebaseConfig } from "../shared/config.js";
-import StorageManager from "../shared/storage-manager.js";
-
-// Initialize Firebase
-const app = initializeApp(firebaseConfig);
-const auth = getAuth(app);
-const db = getDatabase(app);
-const storageManager = new StorageManager();
+import { signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.13.0/firebase-auth.js";
+import { ref, set, push, onValue, update, remove, get } from "https://www.gstatic.com/firebasejs/12.13.0/firebase-database.js";
+import { auth, db } from "../shared/firebase-init.js";
+import { initializeTheme, setupThemeToggle } from "../shared/theme.js";
+import storageManager from "../shared/storage-manager.js";
 
 // State
 let currentUser = null;
@@ -22,32 +16,11 @@ let activeListeners = [];
 const loadingOverlay = document.getElementById('loading-overlay');
 const ideasList = document.getElementById('ideas-list');
 const btnLogout = document.getElementById('btn-logout');
-const btnThemeToggle = document.getElementById('btn-theme-toggle');
-const themeStorageKey = 'cybhorTheme';
 
 // Modal & Forms
 const addIdeaForm = document.getElementById('add-idea-form');
 const promoteIdeaForm = document.getElementById('promote-idea-form');
 let addIdeaModal, promoteIdeaModal;
-
-function applyTheme(theme) {
-  const isDark = theme === 'dark';
-  document.body.classList.toggle('dark-mode', isDark);
-  if (btnThemeToggle) {
-    btnThemeToggle.innerHTML = isDark
-      ? '<i data-lucide="sun" class="align-middle"></i>'
-      : '<i data-lucide="moon" class="align-middle"></i>';
-    btnThemeToggle.setAttribute('aria-label', isDark ? 'Modo claro' : 'Modo escuro');
-  }
-  localStorage.setItem(themeStorageKey, theme);
-  if (window.lucide) lucide.createIcons();
-}
-
-function initializeTheme() {
-  const savedTheme = localStorage.getItem(themeStorageKey);
-  const defaultTheme = savedTheme || (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
-  applyTheme(defaultTheme);
-}
 
 function initModals() {
   addIdeaModal = new bootstrap.Modal(document.getElementById('addIdeaModal'));
@@ -169,16 +142,16 @@ function renderIdeas() {
     // Count votes
     const votesObj = idea.votes || {};
     const totalVotes = Object.keys(votesObj).length;
-    const yesVotes = Object.values(votesObj).filter(v => v === true || v === 'true' || v === 'yes').length;
-    const noVotes = Object.values(votesObj).filter(v => v === false || v === 'false' || v === 'no').length;
+    const yesVotes = Object.values(votesObj).filter(v => v === true).length;
+    const noVotes = Object.values(votesObj).filter(v => v === false).length;
     
     const yesPct = totalVotes > 0 ? Math.round((yesVotes / totalVotes) * 100) : 50;
     const noPct = totalVotes > 0 ? Math.round((noVotes / totalVotes) * 100) : 50;
 
-    // Check my vote
+    // Verificar meu voto
     const myVote = currentUser ? votesObj[currentUser.uid] : undefined;
-    const activeYesClass = (myVote === true || myVote === 'true' || myVote === 'yes') ? 'active-yes' : '';
-    const activeNoClass = (myVote === false || myVote === 'false' || myVote === 'no') ? 'active-no' : '';
+    const activeYesClass = myVote === true ? 'active-yes' : '';
+    const activeNoClass = myVote === false ? 'active-no' : '';
 
     // Admin buttons
     const adminActionHtml = currentUser && currentUser.role === 'Admin'
@@ -241,9 +214,7 @@ function attachVotingHandlers() {
         const snapshot = await get(currentVoteRef);
         const currentVoteVal = snapshot.exists() ? snapshot.val() : null;
         
-        const hasVotedSame = (currentVoteVal === voteValue) || 
-                             (voteValue === true && (currentVoteVal === 'true' || currentVoteVal === 'yes')) ||
-                             (voteValue === false && (currentVoteVal === 'false' || currentVoteVal === 'no'));
+        const hasVotedSame = currentVoteVal === voteValue;
 
         if (snapshot.exists() && hasVotedSame) {
           await remove(currentVoteRef);
@@ -375,14 +346,7 @@ btnLogout.addEventListener('click', () => {
   });
 });
 
-// Theme Toggle
-if (btnThemeToggle) {
-  btnThemeToggle.addEventListener('click', () => {
-    const nextTheme = document.body.classList.contains('dark-mode') ? 'light' : 'dark';
-    applyTheme(nextTheme);
-  });
-}
-
-// Initialize
+// Inicialização
 initializeTheme();
+setupThemeToggle();
 if (window.lucide) window.lucide.createIcons();

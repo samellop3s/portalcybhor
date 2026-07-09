@@ -1,16 +1,8 @@
-import { initializeApp } from "https://www.gstatic.com/firebasejs/12.13.0/firebase-app.js";
-import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.13.0/firebase-auth.js";
-import { getDatabase, ref, onValue, get } from "https://www.gstatic.com/firebasejs/12.13.0/firebase-database.js";
-import { firebaseConfig } from "../shared/config.js";
-import StorageManager from "../shared/storage-manager.js";
-
-// Initialize Firebase
-const app = initializeApp(firebaseConfig);
-const auth = getAuth(app);
-const db = getDatabase(app);
-
-// Initialize Storage Manager for local persistence
-const storageManager = new StorageManager();
+import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.13.0/firebase-auth.js";
+import { ref, onValue } from "https://www.gstatic.com/firebasejs/12.13.0/firebase-database.js";
+import { auth, db } from "../shared/firebase-init.js";
+import { initializeTheme, setupThemeToggle, applyTheme } from "../shared/theme.js";
+import storageManager from "../shared/storage-manager.js";
 
 // DOM
 const totalEl = document.getElementById('total-tasks');
@@ -23,10 +15,8 @@ const tasksTableBody = document.querySelector('#tasks-table tbody');
 
 const btnRefresh = document.getElementById('btn-refresh');
 const btnBack = document.getElementById('btn-back');
-const btnThemeToggle = document.getElementById('btn-theme-toggle');
 const btnExport = document.getElementById('btn-export-csv');
 const btnClear = document.getElementById('btn-clear-filters');
-const themeStorageKey = 'cybhorTheme';
 
 let pieChart, barChart;
 let tasks = {};
@@ -39,24 +29,7 @@ function formatDateEpoch(ms) {
   return d.toLocaleString();
 }
 
-function applyTheme(theme) {
-  const isDark = theme === 'dark';
-  document.body.classList.toggle('dark-mode', isDark);
-  if (btnThemeToggle) {
-    btnThemeToggle.innerHTML = isDark
-      ? '<i data-lucide="sun" class="align-middle"></i>'
-      : '<i data-lucide="moon" class="align-middle"></i>';
-    btnThemeToggle.setAttribute('aria-label', isDark ? 'Modo claro' : 'Modo escuro');
-  }
-  localStorage.setItem(themeStorageKey, theme);
-  if (window.lucide) window.lucide.createIcons();
-}
 
-function initializeTheme() {
-  const savedTheme = localStorage.getItem(themeStorageKey);
-  const defaultTheme = savedTheme || (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
-  applyTheme(defaultTheme);
-}
 
 function buildCharts(statsByUser) {
   const total = Object.keys(tasks).length;
@@ -243,13 +216,6 @@ function attachActions() {
     window.history.back();
   });
 
-  if (btnThemeToggle) {
-    btnThemeToggle.addEventListener('click', () => {
-      const nextTheme = document.body.classList.contains('dark-mode') ? 'light' : 'dark';
-      applyTheme(nextTheme);
-    });
-  }
-
   document.body.classList.add('dashboard-page');
 
   btnExport.addEventListener('click', () => {
@@ -313,6 +279,7 @@ function startRealtime() {
 }
 
 initializeTheme();
+setupThemeToggle();
 if (window.lucide) window.lucide.createIcons();
 
 // Auth guard: allow only logged users to view (simpler UX)

@@ -1,16 +1,11 @@
-import { initializeApp } from "https://www.gstatic.com/firebasejs/12.13.0/firebase-app.js";
-import { getAuth, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.13.0/firebase-auth.js";
-import { getDatabase, ref, onValue, update, get } from "https://www.gstatic.com/firebasejs/12.13.0/firebase-database.js";
-import { getStorage, ref as storageRef, uploadBytes, getDownloadURL, deleteObject } from "https://www.gstatic.com/firebasejs/12.13.0/firebase-storage.js";
-import { firebaseConfig } from "../shared/config.js";
-import StorageManager from "../shared/storage-manager.js";
-
-// Initialize Firebase
-const app = initializeApp(firebaseConfig);
-const auth = getAuth(app);
-const db = getDatabase(app);
-const storage = getStorage(app);
-const storageManager = new StorageManager();
+import { signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.13.0/firebase-auth.js";
+import { ref, onValue, update, get } from "https://www.gstatic.com/firebasejs/12.13.0/firebase-database.js";
+import { ref as storageRef, uploadBytes, getDownloadURL, deleteObject } from "https://www.gstatic.com/firebasejs/12.13.0/firebase-storage.js";
+import { auth, db, storage } from "../shared/firebase-init.js";
+import { initializeTheme, setupThemeToggle } from "../shared/theme.js";
+import { getInitials, ensureUserProfileDefaults } from "../shared/utils.js";
+import storageManager from "../shared/storage-manager.js";
+import mobileMenuController from "../shared/mobile-menu.js";
 
 // State
 let currentUser = null;
@@ -21,8 +16,6 @@ let activeListeners = [];
 const loadingOverlay = document.getElementById('loading-overlay');
 const btnLogout = document.getElementById('btn-logout');
 const btnLogoutAccount = document.getElementById('btn-logout-account');
-const btnThemeToggle = document.getElementById('btn-theme-toggle');
-const themeStorageKey = 'cybhorTheme';
 
 // Profile Elements
 const profileAvatarLarge = document.getElementById('profile-avatar-large');
@@ -50,24 +43,7 @@ const statsTotalTasks = document.getElementById('stats-total-tasks');
 const statsCompletionRate = document.getElementById('stats-completion-rate');
 const statsContributions = document.getElementById('stats-contributions');
 
-function applyTheme(theme) {
-  const isDark = theme === 'dark';
-  document.body.classList.toggle('dark-mode', isDark);
-  if (btnThemeToggle) {
-    btnThemeToggle.innerHTML = isDark
-      ? '<i data-lucide="sun" class="align-middle"></i>'
-      : '<i data-lucide="moon" class="align-middle"></i>';
-    btnThemeToggle.setAttribute('aria-label', isDark ? 'Modo claro' : 'Modo escuro');
-  }
-  localStorage.setItem(themeStorageKey, theme);
-  if (window.lucide) lucide.createIcons();
-}
-
-function initializeTheme() {
-  const savedTheme = localStorage.getItem(themeStorageKey);
-  const defaultTheme = savedTheme || (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
-  applyTheme(defaultTheme);
-}
+// ensureUserProfileDefaults importado de utils.js
 
 // Auth & Routing
 onAuthStateChanged(auth, async (user) => {
@@ -94,34 +70,6 @@ onAuthStateChanged(auth, async (user) => {
     window.location.href = 'index.html';
   }
 });
-
-async function ensureUserProfileDefaults(uid, userData) {
-  const updates = {};
-
-  if (typeof userData.profileMessage === 'undefined' || userData.profileMessage === null) {
-    updates.profileMessage = '';
-  }
-
-  if (typeof userData.profileCreatedAt === 'undefined' || userData.profileCreatedAt === null) {
-    updates.profileCreatedAt = Date.now();
-  }
-
-  if (!userData.name || userData.name.trim().length === 0) {
-    updates.name = 'Usuário Cybhor';
-  }
-
-  if (!userData.email) {
-    updates.email = '';
-  }
-
-  if (!userData.role) {
-    updates.role = 'Integrante';
-  }
-
-  if (Object.keys(updates).length > 0) {
-    await update(ref(db, `users/${uid}`), updates);
-  }
-}
 
 function startRealtimeSync(uid) {
   // Load cached tasks
@@ -165,11 +113,11 @@ function updateProfileUI() {
   if (!currentUser) return;
 
   // Basic Info
-  const initials = currentUser.name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
+  const initials = getInitials(currentUser.name);
 
-  // Sync mobile drawer if controller is initialized
-  if (window.mobileMenuController) {
-    window.mobileMenuController.updateUserInfo(currentUser.name, currentUser.role, initials, currentUser.photoURL);
+  // Sincronizar mobile drawer
+  if (mobileMenuController) {
+    mobileMenuController.updateUserInfo(currentUser.name, currentUser.role, initials, currentUser.photoURL);
   }
   
   // Avatar with photo or initials
@@ -342,7 +290,7 @@ btnRemovePhoto.addEventListener('click', async () => {
 
     // Reset avatar to initials
     if (profileAvatarLarge && currentUser.name) {
-      const initials = currentUser.name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
+      const initials = getInitials(currentUser.name);
       profileAvatarLarge.innerHTML = initials;
     }
 
@@ -367,14 +315,7 @@ btnLogoutAccount.addEventListener('click', () => {
   });
 });
 
-// Theme Toggle
-if (btnThemeToggle) {
-  btnThemeToggle.addEventListener('click', () => {
-    const nextTheme = document.body.classList.contains('dark-mode') ? 'light' : 'dark';
-    applyTheme(nextTheme);
-  });
-}
-
-// Initialize
+// Inicialização
 initializeTheme();
+setupThemeToggle();
 if (window.lucide) window.lucide.createIcons();

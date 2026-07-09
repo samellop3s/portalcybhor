@@ -1,18 +1,14 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.13.0/firebase-app.js";
 import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged, createUserWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/12.13.0/firebase-auth.js";
-import { getDatabase, ref, set, onValue, update, remove, get } from "https://www.gstatic.com/firebasejs/12.13.0/firebase-database.js";
+import { ref, set, onValue, update, remove, get } from "https://www.gstatic.com/firebasejs/12.13.0/firebase-database.js";
+import { auth, db } from "../shared/firebase-init.js";
 import { firebaseConfig } from "../shared/config.js";
-import StorageManager from "../shared/storage-manager.js";
+import { initializeTheme, setupThemeToggle } from "../shared/theme.js";
+import { getInitials } from "../shared/utils.js";
+import storageManager from "../shared/storage-manager.js";
+import mobileMenuController from "../shared/mobile-menu.js";
 
-// Initialize Firebase
-const app = initializeApp(firebaseConfig);
-const auth = getAuth(app);
-const db = getDatabase(app);
-
-// Initialize Storage Manager for local persistence
-const storageManager = new StorageManager();
-
-// Secondary Auth instance to register new users without signing out the admin
+// Instância secundária do Firebase para registrar novos usuários sem deslogar o admin
 const secondaryApp = initializeApp(firebaseConfig, "SecondaryRegistrationApp");
 const secondaryAuth = getAuth(secondaryApp);
 
@@ -38,39 +34,12 @@ const loginPassword = document.getElementById('login-password');
 const headerUserName = document.getElementById('header-user-name');
 const headerUserAvatar = document.getElementById('header-user-avatar');
 const btnLogout = document.getElementById('btn-logout');
-const btnThemeToggle = document.getElementById('btn-theme-toggle');
-const themeStorageKey = 'cybhorTheme';
 
 // Table list
 const adminMembersList = document.getElementById('admin-members-list');
 
-function applyTheme(theme) {
-  const isDark = theme === 'dark';
-  document.body.classList.toggle('dark-mode', isDark);
-  if (btnThemeToggle) {
-    btnThemeToggle.innerHTML = isDark
-      ? '<i data-lucide="sun" class="align-middle"></i>'
-      : '<i data-lucide="moon" class="align-middle"></i>';
-    btnThemeToggle.setAttribute('aria-label', isDark ? 'Modo claro' : 'Modo escuro');
-  }
-  localStorage.setItem(themeStorageKey, theme);
-  if (window.lucide) lucide.createIcons();
-}
-
-function initializeTheme() {
-  const savedTheme = localStorage.getItem(themeStorageKey);
-  const defaultTheme = savedTheme || (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
-  applyTheme(defaultTheme);
-}
-
-if (btnThemeToggle) {
-  btnThemeToggle.addEventListener('click', () => {
-    const nextTheme = document.body.classList.contains('dark-mode') ? 'light' : 'dark';
-    applyTheme(nextTheme);
-  });
-}
-
 initializeTheme();
+setupThemeToggle();
 
 /* ==========================================
    AUTH & SECURITY CHECKS
@@ -172,10 +141,9 @@ function startAdminRealtimeSync(uid) {
       }
       updateHeader();
       
-      // Sync mobile drawer if controller is initialized
-      if (window.mobileMenuController) {
-        const initials = currentAdmin.name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
-        window.mobileMenuController.updateUserInfo(currentAdmin.name, currentAdmin.role, initials, currentAdmin.photoURL);
+      // Sincronizar mobile drawer
+      if (mobileMenuController) {
+        mobileMenuController.updateUserInfo(currentAdmin.name, currentAdmin.role, getInitials(currentAdmin.name), currentAdmin.photoURL);
       }
     }
   });
@@ -254,7 +222,7 @@ initBrandAnimation();
 function updateHeader() {
   if (!currentAdmin) return;
   headerUserName.textContent = currentAdmin.name;
-  const initials = currentAdmin.name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
+  const initials = getInitials(currentAdmin.name);
   if (currentAdmin.photoURL) {
     headerUserAvatar.innerHTML = `<img src="${currentAdmin.photoURL}" alt="Avatar" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;">`;
   } else {

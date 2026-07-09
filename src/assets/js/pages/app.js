@@ -1,18 +1,11 @@
-import { initializeApp } from "https://www.gstatic.com/firebasejs/12.13.0/firebase-app.js";
-import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.13.0/firebase-auth.js";
-import { getDatabase, ref, set, push, onValue, update, remove, get } from "https://www.gstatic.com/firebasejs/12.13.0/firebase-database.js";
-import { getStorage, ref as sRef, uploadBytes, getDownloadURL, deleteObject } from "https://www.gstatic.com/firebasejs/12.13.0/firebase-storage.js";
-import { firebaseConfig } from "../shared/config.js";
-import StorageManager from "../shared/storage-manager.js";
-
-// Initialize Firebase
-const app = initializeApp(firebaseConfig);
-const auth = getAuth(app);
-const db = getDatabase(app);
-const storage = getStorage(app);
-
-// Initialize Storage Manager for local persistence
-const storageManager = new StorageManager();
+import { signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.13.0/firebase-auth.js";
+import { ref, set, push, onValue, update, remove, get } from "https://www.gstatic.com/firebasejs/12.13.0/firebase-database.js";
+import { ref as sRef, uploadBytes, getDownloadURL, deleteObject } from "https://www.gstatic.com/firebasejs/12.13.0/firebase-storage.js";
+import { auth, db, storage } from "../shared/firebase-init.js";
+import { initializeTheme, setupThemeToggle } from "../shared/theme.js";
+import { getInitials, escapeHTML, ensureUserProfileDefaults } from "../shared/utils.js";
+import storageManager from "../shared/storage-manager.js";
+import mobileMenuController from "../shared/mobile-menu.js";
 
 // Local State
 let currentUser = null;
@@ -36,8 +29,6 @@ const headerUserName = document.getElementById('header-user-name');
 const headerUserRoleBadge = document.getElementById('header-user-role-badge');
 const headerUserAvatar = document.getElementById('header-user-avatar');
 const btnLogout = document.getElementById('btn-logout');
-const btnThemeToggle = document.getElementById('btn-theme-toggle');
-const themeStorageKey = 'cybhorTheme';
 
 // Admin Portal Redirect Link
 const btnAdminPortal = document.getElementById('btn-admin-portal');
@@ -52,32 +43,6 @@ const projectStagesColumn = document.getElementById('project-stages-column');
 const addStageForm = document.getElementById('add-stage-form');
 const addTaskForm = document.getElementById('add-task-form');
 
-function applyTheme(theme) {
-  const isDark = theme === 'dark';
-  document.body.classList.toggle('dark-mode', isDark);
-  if (btnThemeToggle) {
-    btnThemeToggle.innerHTML = isDark
-      ? '<i data-lucide="sun" class="align-middle"></i>'
-      : '<i data-lucide="moon" class="align-middle"></i>';
-    btnThemeToggle.setAttribute('aria-label', isDark ? 'Modo claro' : 'Modo escuro');
-  }
-  localStorage.setItem(themeStorageKey, theme);
-  if (window.lucide) lucide.createIcons();
-}
-
-function initializeTheme() {
-  const savedTheme = localStorage.getItem(themeStorageKey);
-  const defaultTheme = savedTheme || (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
-  applyTheme(defaultTheme);
-}
-
-if (btnThemeToggle) {
-  btnThemeToggle.addEventListener('click', () => {
-    const nextTheme = document.body.classList.contains('dark-mode') ? 'light' : 'dark';
-    applyTheme(nextTheme);
-  });
-}
-
 if (btnIdeasPanel) {
   btnIdeasPanel.addEventListener('click', () => {
     window.location.href = 'ideas.html';
@@ -85,6 +50,7 @@ if (btnIdeasPanel) {
 }
 
 initializeTheme();
+setupThemeToggle();
 
 // Boostrap Modal Instances (for closing programmatically)
 let addStageModal, addTaskModal;
@@ -152,33 +118,7 @@ onAuthStateChanged(auth, async (user) => {
   }
 });
 
-async function ensureUserProfileDefaults(uid, userData) {
-  const updates = {};
-
-  if (typeof userData.profileMessage === 'undefined' || userData.profileMessage === null) {
-    updates.profileMessage = '';
-  }
-
-  if (typeof userData.profileCreatedAt === 'undefined' || userData.profileCreatedAt === null) {
-    updates.profileCreatedAt = Date.now();
-  }
-
-  if (!userData.name || userData.name.trim().length === 0) {
-    updates.name = 'Usuário Cybhor';
-  }
-
-  if (!userData.email) {
-    updates.email = '';
-  }
-
-  if (!userData.role) {
-    updates.role = 'Integrante';
-  }
-
-  if (Object.keys(updates).length > 0) {
-    await update(ref(db, `users/${uid}`), updates);
-  }
-}
+// ensureUserProfileDefaults importado de utils.js
 
 // Realtime Sync Init
 function startRealtimeSync(uid) {
@@ -209,14 +149,10 @@ function startRealtimeSync(uid) {
       updateHeader();
       updatePermissionsUI();
       
-      // Sync mobile drawer if controller is initialized
-      if (window.mobileMenuController) {
-        const initials = currentUser.name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
-        window.mobileMenuController.updateUserInfo(currentUser.name, currentUser.role, initials, currentUser.photoURL);
+      // Sincronizar mobile drawer
+      if (mobileMenuController) {
+        mobileMenuController.updateUserInfo(currentUser.name, currentUser.role, getInitials(currentUser.name), currentUser.photoURL);
       }
-      
-      // renderUserProfilePanel() moved to profile.html
-      renderIdeas();
     }
   });
   activeListeners.push(userListener);
@@ -246,13 +182,7 @@ function startRealtimeSync(uid) {
   });
   activeListeners.push(tasksListener);
 
-  // 5. Sync ideas
-  const ideasListener = onValue(ref(db, 'ideas'), (snapshot) => {
-    ideas = snapshot.exists() ? snapshot.val() : {};
-    storageManager.saveIdeas(ideas);
-    renderIdeas();
-  });
-  activeListeners.push(ideasListener);
+  // Ideas: listener removido — lógica de ideias está em ideas.html/ideas.js
 
   // Transition UI
   setTimeout(() => {
@@ -332,7 +262,7 @@ function updateHeader() {
   headerUserRoleBadge.innerHTML = `<span class="badge ${badgeClass}">${currentUser.role}</span>`;
   
   // Set Initials or Photo Avatar
-  const initials = currentUser.name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
+  const initials = getInitials(currentUser.name);
   if (currentUser.photoURL) {
     headerUserAvatar.innerHTML = `<img src="${currentUser.photoURL}" alt="Avatar" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;">`;
   } else {
@@ -547,7 +477,7 @@ function renderKanban() {
     } else {
       stageTasks.forEach(task => {
         const assignee = allUsers[task.assigneeId] ? allUsers[task.assigneeId].name : 'Desconhecido';
-        const initials = assignee.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
+        const initials = getInitials(assignee);
         
         const taskCard = document.createElement('div');
         taskCard.className = 'task-card';
@@ -827,31 +757,11 @@ addTaskForm.addEventListener('submit', async (e) => {
   }
 });
 
-/* ==========================================
-   IDEAS & VOTING PANEL (Moved to ideas.html)
-   ========================================== */
-
-function renderIdeas() {
-  // Ideas rendering moved to dedicated ideas.html page
-  // This stub kept for backward compatibility with startRealtimeSync()
-}
-
 // ============================================
 // CHAT & ATTACHMENTS FOR STAGES & TASKS
 // ============================================
 
-function escapeHTML(str) {
-  if (!str) return '';
-  return str.replace(/[&<>'"]/g, 
-    tag => ({
-      '&': '&amp;',
-      '<': '&lt;',
-      '>': '&gt;',
-      "'": '&#39;',
-      '"': '&quot;'
-    }[tag] || tag)
-  );
-}
+// escapeHTML importado de utils.js
 
 let unsubscribeStageChat = null;
 const stageChatModalEl = document.getElementById('stageChatModal');
@@ -978,7 +888,7 @@ function openTaskDetails(taskId) {
   document.getElementById('task-details-description').textContent = task.description;
   
   const assignee = allUsers[task.assigneeId] ? allUsers[task.assigneeId].name : 'Desconhecido';
-  const assigneeInitials = assignee.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
+  const assigneeInitials = getInitials(assignee);
   document.getElementById('task-details-assignee-name').textContent = assignee;
   
   const assigneeAvatarEl = document.getElementById('task-details-assignee-avatar');

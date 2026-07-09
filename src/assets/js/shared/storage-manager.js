@@ -321,8 +321,6 @@ class StorageManager {
   }
 }
 
-// Criar instância global
-window.storageManager = new StorageManager();
-
-// Exportar para uso em módulos
-export default StorageManager;
+// Exportar instância singleton para uso em módulos
+const storageManager = new StorageManager();
+export default storageManager;

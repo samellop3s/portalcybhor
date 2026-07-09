@@ -31,10 +31,4 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
-# Python caches and local script folders
-**/__pycache__/
-*.pyc
-*.pyo
-*.pyd
-.pytest_cache/
-firebase_scripts/
+src/assets/js/shared/config.js
