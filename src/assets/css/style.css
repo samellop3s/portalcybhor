@@ -1,20 +1,20 @@
 @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Space+Mono:wght@400;700&display=swap');
 
 :root {
-  /* Industrial / Construction Site Palette */
-  --bg-main: #f8fafc; /* Concrete Off-White */
+  /* Industrial / Construction Site Palette (Softened for Light Mode) */
+  --bg-main: #f1f5f9; /* Softer Slate 100 */
   --bg-panel: #ffffff; /* Clean White */
-  --bg-dark: #0f172a; /* Asphalt / Dark Steel */
-  --bg-asphalt: #1e293b;
+  --bg-dark: #1e293b; /* Softer Dark Steel */
+  --bg-asphalt: #334155;
   
-  --primary-orange: #ff6b00; /* Safety Orange */
-  --primary-orange-hover: #e05e00;
-  --orange-light: #fff5eb;
+  --primary-orange: #f97316; /* Softer Safety Orange */
+  --primary-orange-hover: #ea580c;
+  --orange-light: #fff7ed;
   
-  --border-color: #cbd5e1;
-  --border-heavy: #1e293b;
+  --border-color: #e2e8f0; /* Softer borders */
+  --border-heavy: #475569;
   
-  --text-main: #0f172a; /* Slate 900 */
+  --text-main: #334155; /* Slate 700 instead of 900 for less contrast glare */
   --text-muted: #64748b; /* Slate 500 */
   --text-light: #ffffff;
   
