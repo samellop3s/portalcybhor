@@ -168,9 +168,9 @@ function renderIdeas() {
     const card = document.createElement('div');
     card.className = 'idea-card mb-3';
     card.innerHTML = `
-      <h6 class="text-light mb-1">${idea.title}</h6>
-      <p class="text-muted small mb-2">${idea.description}</p>
-      <div class="small text-secondary mb-3">Sugerido por: <span class="text-info">${idea.authorName}</span></div>
+      <h6 class="text-light mb-1">${DOMPurify.sanitize(idea.title)}</h6>
+      <p class="text-muted small mb-2">${DOMPurify.sanitize(idea.description)}</p>
+      <div class="small text-secondary mb-3">Sugerido por: <span class="text-info">${DOMPurify.sanitize(idea.authorName)}</span></div>
       
       <div class="d-flex justify-content-between small text-muted font-monospace mb-2">
         <span>Sim: ${yesVotes} (${yesPct}%)</span>
