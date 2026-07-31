@@ -3,9 +3,6 @@
 // ============================================
 // Funções utilitárias compartilhadas entre módulos.
 
-import { ref, update } from "https://www.gstatic.com/firebasejs/12.13.0/firebase-database.js";
-import { db } from "./firebase-init.js";
-
 /**
  * Extrai iniciais de um nome (máximo 2 caracteres)
  * @param {string} name - Nome completo
@@ -35,35 +32,90 @@ export function escapeHTML(str) {
 }
 
 /**
- * Garante que o perfil do usuário possui todos os campos obrigatórios
- * com valores padrão. Atualiza no Firebase se necessário.
- * @param {string} uid - UID do usuário
- * @param {Object} userData - Dados atuais do perfil
+ * Formata um valor em centavos como moeda brasileira (R$)
+ * Valores monetários são armazenados em centavos (inteiro)
+ * para evitar erros de arredondamento de ponto flutuante.
+ * @param {number} amountCents - Valor em centavos
+ * @returns {string} Valor formatado (ex: "R$ 1.234,56")
  */
-export async function ensureUserProfileDefaults(uid, userData) {
-  const updates = {};
-
-  if (typeof userData.profileMessage === 'undefined' || userData.profileMessage === null) {
-    updates.profileMessage = '';
-  }
-
-  if (typeof userData.profileCreatedAt === 'undefined' || userData.profileCreatedAt === null) {
-    updates.profileCreatedAt = Date.now();
-  }
-
-  if (!userData.name || userData.name.trim().length === 0) {
-    updates.name = 'Usuário Cybhor';
-  }
-
-  if (!userData.email) {
-    updates.email = '';
-  }
-
-  if (!userData.role) {
-    updates.role = 'Integrante';
-  }
-
-  if (Object.keys(updates).length > 0) {
-    await update(ref(db, `users/${uid}`), updates);
-  }
+export function formatCurrencyBRL(amountCents) {
+  const value = (Number(amountCents) || 0) / 100;
+  return value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 }
+
+/**
+ * Converte texto digitado pelo usuário (ex: "1.234,56") em centavos
+ * @param {string} text - Valor digitado
+ * @returns {number|null} Valor em centavos ou null se inválido
+ */
+export function parseCurrencyToCents(text) {
+  if (!text) return null;
+  const normalized = String(text).replace(/[R$\s.]/g, '').replace(',', '.');
+  const value = Number(normalized);
+  if (!Number.isFinite(value) || value < 0) return null;
+  return Math.round(value * 100);
+}
+
+/**
+ * Formata um timestamp epoch como data brasileira (dd/mm/aaaa)
+ * @param {number} ms - Timestamp em milissegundos
+ * @returns {string} Data formatada ou '-' se inválida
+ */
+export function formatDateBR(ms) {
+  if (!ms) return '-';
+  return new Date(ms).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+}
+
+/**
+ * Converte o valor de um <input type="date"> (aaaa-mm-dd) em epoch ms
+ * ancorado ao meio-dia local para evitar deslocamento de fuso horário.
+ * @param {string} dateInputValue - Valor do input date
+ * @returns {number|null} Timestamp em milissegundos ou null
+ */
+export function dateInputToEpoch(dateInputValue) {
+  if (!dateInputValue) return null;
+  const [year, month, day] = dateInputValue.split('-').map(Number);
+  if (!year || !month || !day) return null;
+  return new Date(year, month - 1, day, 12, 0, 0).getTime();
+}
+
+/**
+ * Converte epoch ms no formato aceito por <input type="date"> (aaaa-mm-dd)
+ * @param {number} ms - Timestamp em milissegundos
+ * @returns {string} Data no formato aaaa-mm-dd
+ */
+export function epochToDateInput(ms) {
+  if (!ms) return '';
+  const d = new Date(ms);
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${d.getFullYear()}-${month}-${day}`;
+}
+
+/**
+ * Faz o download de um conteúdo CSV como arquivo
+ * @param {string} csvContent - Conteúdo CSV
+ * @param {string} filename - Nome do arquivo (ex: "financeiro.csv")
+ */
+export function downloadCSV(csvContent, filename) {
+  const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
+/**
+ * Escapa uma célula para uso em CSV
+ * @param {*} value - Valor da célula
+ * @returns {string} Célula segura para CSV
+ */
+export function escapeCsvCell(value) {
+  const text = value === undefined || value === null ? '' : String(value);
+  return /[",\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+}
+

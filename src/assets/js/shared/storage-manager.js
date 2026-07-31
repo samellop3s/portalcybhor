@@ -2,7 +2,8 @@
 // Local Storage Manager for Tasks & Ideas
 // ============================================
 // Gerencia a persistência local de tarefas e ideias
-// Funciona como backup/cache para sincronização com Firebase
+// Funciona como backup/cache para exibição instantânea (offline-first)
+// enquanto os dados atuais são buscados na API REST
 
 class StorageManager {
   constructor() {

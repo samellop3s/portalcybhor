@@ -1,9 +1,7 @@
-import { signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.13.0/firebase-auth.js";
-import { ref, set, push, onValue, update, remove, get } from "https://www.gstatic.com/firebasejs/12.13.0/firebase-database.js";
-import { ref as sRef, uploadBytes, getDownloadURL, deleteObject } from "https://www.gstatic.com/firebasejs/12.13.0/firebase-storage.js";
-import { auth, db, storage } from "../shared/firebase-init.js";
+import { api, ApiError } from "../shared/api-client.js";
+import { getSocket } from "../shared/socket-client.js";
 import { initializeTheme, setupThemeToggle } from "../shared/theme.js";
-import { getInitials, escapeHTML, ensureUserProfileDefaults } from "../shared/utils.js";
+import { getInitials, escapeHTML } from "../shared/utils.js";
 import storageManager from "../shared/storage-manager.js";
 import mobileMenuController from "../shared/mobile-menu.js";
 
@@ -12,8 +10,6 @@ let currentUser = null;
 let allUsers = {};
 let stages = {};
 let tasks = {};
-let ideas = {};
-let activeListeners = [];
 
 // DOM Elements
 const loadingOverlay = document.getElementById('loading-overlay');
@@ -37,7 +33,6 @@ const btnIdeasPanel = document.getElementById('btn-ideas-panel');
 // Kanban Board
 const kanbanBoard = document.getElementById('kanban-board');
 const addStageArea = document.getElementById('add-stage-area');
-const projectStagesColumn = document.getElementById('project-stages-column');
 
 // Modals forms
 const addStageForm = document.getElementById('add-stage-form');
@@ -59,7 +54,6 @@ let addStageModal, addTaskModal;
 function initModals() {
   addStageModal = new bootstrap.Modal(document.getElementById('addStageModal'));
   addTaskModal = new bootstrap.Modal(document.getElementById('addTaskModal'));
-  // Ideas modals moved to ideas.html
 }
 
 if (document.readyState === 'loading') {
@@ -72,117 +66,63 @@ if (document.readyState === 'loading') {
    AUTH & ROUTING FLOW
    ========================================== */
 
-// Handle Auth State Changes
-onAuthStateChanged(auth, async (user) => {
-  // Clear any existing listeners to prevent leaks
-  activeListeners.forEach(unsubscribe => unsubscribe());
-  activeListeners = [];
-
-  if (user) {
-    // User is logged in
-    try {
-      const userRef = ref(db, `users/${user.uid}`);
-      const userSnapshot = await get(userRef);
-      
-      if (!userSnapshot.exists()) {
-        // First registration check to bootstrap admin role
-        const usersListSnapshot = await get(ref(db, 'users'));
-        const hasUsers = usersListSnapshot.exists();
-        const role = hasUsers ? 'Integrante' : 'Admin';
-        
-        // Write user details
-        const registerNameInput = document.getElementById('register-name');
-        const fallbackName = registerNameInput ? registerNameInput.value.trim() : '';
-        const name = user.displayName || fallbackName || 'Usuário Cybhor';
-        await set(userRef, {
-          name: name,
-          email: user.email,
-          role: role,
-          profileMessage: '',
-          profileCreatedAt: Date.now()
-        });
-      }
-
-      // Start listening to data updates in real-time
-      startRealtimeSync(user.uid);
-
-    } catch (error) {
-      console.error("Error setting up user profile:", error);
-      showAuthError(error.message);
-      signOut(auth);
+async function bootstrapApp() {
+  try {
+    const { user } = await api.get('/auth/me');
+    currentUser = user;
+    await startRealtimeSync();
+  } catch (error) {
+    if (error instanceof ApiError && error.statusCode === 401) {
+      showAuthUI();
+    } else {
+      console.error('Erro ao verificar sessão:', error);
+      showAuthUI();
     }
-  } else {
-    // User is logged out
-    currentUser = null;
-    showAuthUI();
   }
-});
+}
 
-// ensureUserProfileDefaults importado de utils.js
+bootstrapApp();
 
 // Realtime Sync Init
-function startRealtimeSync(uid) {
+async function startRealtimeSync() {
   // Load cached data from localStorage first (for offline/quick load)
   const cachedTasks = storageManager.loadTasks();
-  const cachedIdeas = storageManager.loadIdeas();
   const cachedStages = storageManager.loadStages();
-  
+
   if (Object.keys(cachedTasks).length > 0) {
     tasks = cachedTasks;
-  }
-  if (Object.keys(cachedIdeas).length > 0) {
-    ideas = cachedIdeas;
   }
   if (Object.keys(cachedStages).length > 0) {
     stages = cachedStages;
   }
 
-  // 1. Sync current user details
-  const userListener = onValue(ref(db, `users/${uid}`), async (snapshot) => {
-    if (snapshot.exists()) {
-      currentUser = { uid, ...snapshot.val() };
-      await ensureUserProfileDefaults(uid, currentUser);
-      const refreshedSnapshot = await get(ref(db, `users/${uid}`));
-      if (refreshedSnapshot.exists()) {
-        currentUser = { uid, ...refreshedSnapshot.val() };
-      }
-      updateHeader();
-      updatePermissionsUI();
-      
-      // Sincronizar mobile drawer
-      if (mobileMenuController) {
-        mobileMenuController.updateUserInfo(currentUser.name, currentUser.role, getInitials(currentUser.name), currentUser.photoURL);
-      }
-    }
-  });
-  activeListeners.push(userListener);
+  try {
+    const [{ users }, { stages: stageList }, { tasks: taskList }] = await Promise.all([
+      api.get('/users'),
+      api.get('/stages'),
+      api.get('/tasks')
+    ]);
 
-  // 2. Sync all users
-  const allUsersListener = onValue(ref(db, 'users'), (snapshot) => {
-    if (snapshot.exists()) {
-      allUsers = snapshot.val();
-      populateAssigneeDropdowns();
-    }
-  });
-  activeListeners.push(allUsersListener);
+    allUsers = arrayToMap(users, 'uid');
+    stages = arrayToMap(stageList);
+    tasks = arrayToMap(taskList);
 
-  // 3. Sync project stages
-  const stagesListener = onValue(ref(db, 'stages'), (snapshot) => {
-    stages = snapshot.exists() ? snapshot.val() : {};
     storageManager.saveStages(stages);
-    renderKanban();
-  });
-  activeListeners.push(stagesListener);
-
-  // 4. Sync tasks
-  const tasksListener = onValue(ref(db, 'tasks'), (snapshot) => {
-    tasks = snapshot.exists() ? snapshot.val() : {};
     storageManager.saveTasks(tasks);
-    renderKanban();
-  });
-  activeListeners.push(tasksListener);
 
-  // Ideas: listener removido — lógica de ideias está em ideas.html/ideas.js
+    populateAssigneeDropdowns();
+    updateHeader();
+    updatePermissionsUI();
+    renderKanban();
+
+    if (mobileMenuController) {
+      mobileMenuController.updateUserInfo(currentUser.name, currentUser.role, getInitials(currentUser.name), currentUser.photoURL);
+    }
+  } catch (error) {
+    console.error('Erro ao carregar dados do portal:', error);
+  }
+
+  setupSocketListeners();
 
   // Transition UI
   setTimeout(() => {
@@ -196,6 +136,89 @@ function startRealtimeSync(uid) {
   }, 500);
 }
 
+function arrayToMap(list, idField = 'id') {
+  const map = {};
+  list.forEach(item => {
+    map[item[idField]] = item;
+  });
+  return map;
+}
+
+/* ==========================================
+   REALTIME EVENTS (SOCKET.IO)
+   ========================================== */
+
+let stageChatSocketHandler = null;
+let taskChatSocketHandler = null;
+let taskAttachmentCreatedHandler = null;
+let taskAttachmentDeletedHandler = null;
+
+function setupSocketListeners() {
+  const socket = getSocket();
+
+  socket.on('user:created', (user) => {
+    allUsers[user.uid] = user;
+    populateAssigneeDropdowns();
+  });
+
+  socket.on('user:updated', (user) => {
+    allUsers[user.uid] = user;
+    if (currentUser && user.uid === currentUser.uid) {
+      currentUser = { ...currentUser, ...user };
+      updateHeader();
+      if (mobileMenuController) {
+        mobileMenuController.updateUserInfo(currentUser.name, currentUser.role, getInitials(currentUser.name), currentUser.photoURL);
+      }
+    }
+    populateAssigneeDropdowns();
+    renderKanban();
+  });
+
+  socket.on('user:deleted', ({ uid }) => {
+    delete allUsers[uid];
+    populateAssigneeDropdowns();
+    renderKanban();
+  });
+
+  socket.on('stage:created', (stage) => {
+    stages[stage.id] = stage;
+    storageManager.saveStages(stages);
+    renderKanban();
+  });
+
+  socket.on('stage:deleted', ({ id }) => {
+    delete stages[id];
+    Object.keys(tasks).forEach(taskId => {
+      if (tasks[taskId].stageId === id) delete tasks[taskId];
+    });
+    storageManager.saveStages(stages);
+    storageManager.saveTasks(tasks);
+    renderKanban();
+  });
+
+  socket.on('task:created', (task) => {
+    tasks[task.id] = task;
+    storageManager.saveTasks(tasks);
+    renderKanban();
+  });
+
+  socket.on('task:updated', (task) => {
+    tasks[task.id] = task;
+    storageManager.saveTasks(tasks);
+    renderKanban();
+  });
+
+  socket.on('task:deleted', ({ id }) => {
+    delete tasks[id];
+    storageManager.saveTasks(tasks);
+    renderKanban();
+  });
+}
+
+/* ==========================================
+   AUTH ACTIONS
+   ========================================== */
+
 // Show Auth Form UI
 function showAuthUI() {
   loadingOverlay.classList.add('d-none');
@@ -203,20 +226,21 @@ function showAuthUI() {
   authSection.classList.remove('d-none');
 }
 
-// Public self-registration removed
-
 // Login Submission
 loginForm.addEventListener('submit', async (e) => {
   e.preventDefault();
   const email = document.getElementById('login-email').value.trim();
   const password = document.getElementById('login-password').value;
-  
+
   loadingOverlay.classList.remove('d-none');
   loadingOverlay.style.opacity = '1';
   authAlert.classList.add('d-none');
 
   try {
-    await signInWithEmailAndPassword(auth, email, password);
+    const { user } = await api.post('/auth/login', { email, password });
+    currentUser = user;
+    authSection.classList.add('d-none');
+    await startRealtimeSync();
   } catch (error) {
     loadingOverlay.classList.add('d-none');
     showAuthError("Falha no login: verifique suas credenciais.");
@@ -224,13 +248,11 @@ loginForm.addEventListener('submit', async (e) => {
   }
 });
 
-// Public registration submit listener removed
-
 // Logout action
 btnLogout.addEventListener('click', () => {
   loadingOverlay.classList.remove('d-none');
   loadingOverlay.style.opacity = '1';
-  signOut(auth).then(() => {
+  api.post('/auth/logout').finally(() => {
     window.location.reload();
   });
 });
@@ -253,14 +275,14 @@ function showAuthError(msg) {
 function updateHeader() {
   if (!currentUser) return;
   headerUserName.textContent = currentUser.name;
-  
+
   // Update Role Badge
   let badgeClass = 'role-visualizador';
   if (currentUser.role === 'Admin') badgeClass = 'role-admin';
   else if (currentUser.role === 'Integrante') badgeClass = 'role-integrante';
-  
+
   headerUserRoleBadge.innerHTML = `<span class="badge ${badgeClass}">${currentUser.role}</span>`;
-  
+
   // Set Initials or Photo Avatar
   const initials = getInitials(currentUser.name);
   if (currentUser.photoURL) {
@@ -270,14 +292,11 @@ function updateHeader() {
   }
 }
 
-// renderUserProfilePanel moved to profile.html page
-// This function is no longer needed as profile panel is now on a dedicated page
-
 function updatePermissionsUI() {
   if (!currentUser) return;
-  
+
   const isAdmin = currentUser.role === 'Admin';
-  
+
   // Show Admin Portal Button & Stage Creation Controls
   if (isAdmin) {
     if (btnAdminPortal) btnAdminPortal.classList.remove('d-none');
@@ -288,21 +307,19 @@ function updatePermissionsUI() {
   }
 }
 
-// Integrated admin panel render removed (moved to admin.js)
-
 function populateAssigneeDropdowns() {
   const taskAssignee = document.getElementById('task-assignee');
   const promoteTaskAssignee = document.getElementById('promote-task-assignee');
-  
+
   let options = '<option value="" disabled selected>Selecione um integrante...</option>';
-  
+
   Object.keys(allUsers).forEach(uid => {
     const user = allUsers[uid];
     options += `<option value="${uid}">${user.name} (${user.role})</option>`;
   });
-  
-  taskAssignee.innerHTML = options;
-  promoteTaskAssignee.innerHTML = options;
+
+  if (taskAssignee) taskAssignee.innerHTML = options;
+  if (promoteTaskAssignee) promoteTaskAssignee.innerHTML = options;
 }
 
 function getPriorityNotificationColor(priority = 'medium') {
@@ -417,10 +434,10 @@ function showTaskScheduledNotification(taskTitle, taskAssigneeName = 'Equipe', p
 // Render Kanban board columns
 function renderKanban() {
   kanbanBoard.innerHTML = '';
-  
+
   // Sort stages by order
   const sortedStageKeys = Object.keys(stages).sort((a, b) => stages[a].order - stages[b].order);
-  
+
   if (sortedStageKeys.length === 0) {
     kanbanBoard.innerHTML = `
       <div class="text-center text-muted py-5 w-100">
@@ -435,16 +452,16 @@ function renderKanban() {
 
   sortedStageKeys.forEach((stageId, index) => {
     const stage = stages[stageId];
-    
+
     // Create column card element
     const colDiv = document.createElement('div');
     colDiv.className = 'glass-panel kanban-column';
     colDiv.setAttribute('data-stage-id', stageId);
-    
+
     // Admin check for delete button
-    const deleteColBtn = currentUser && currentUser.role === 'Admin' 
+    const deleteColBtn = currentUser && currentUser.role === 'Admin'
       ? `<button class="btn btn-link text-danger p-0 delete-stage-btn" data-stage-id="${stageId}"><i data-lucide="trash-2" style="width: 16px;"></i></button>`
-      : '';    // Render header
+      : '';    // Render header
     colDiv.innerHTML = `
       <div class="column-header">
         <h6 class="column-title"><i data-lucide="folder" class="text-info" style="width:16px;"></i> ${stage.title}</h6>
@@ -462,47 +479,47 @@ function renderKanban() {
         </button>
       </div>
     `;
-    
+
     kanbanBoard.appendChild(colDiv);
-    
+
     // Fill tasks
     const colTaskList = colDiv.querySelector(`.task-list`);
     const stageTasks = Object.keys(tasks)
       .map(id => ({ id, ...tasks[id] }))
       .filter(t => t.stageId === stageId)
       .filter(t => t.status !== 'done' && t.status !== 'failed');
-      
+
     if (stageTasks.length === 0) {
       colTaskList.innerHTML = '<div class="text-center py-4 text-muted small drag-placeholder">Arraste tarefas aqui</div>';
     } else {
       stageTasks.forEach(task => {
         const assignee = allUsers[task.assigneeId] ? allUsers[task.assigneeId].name : 'Desconhecido';
         const initials = getInitials(assignee);
-        
+
         const taskCard = document.createElement('div');
         taskCard.className = 'task-card';
         taskCard.setAttribute('draggable', currentUser && currentUser.role !== 'Visualizador' ? 'true' : 'false');
         taskCard.setAttribute('data-task-id', task.id);
-        
+
         // Navigation buttons for accessibility/mobile
         const showNav = currentUser && currentUser.role !== 'Visualizador';
-        const leftBtn = showNav && index > 0 
-          ? `<button class="btn btn-sm btn-link text-info p-0 move-task-left-btn" data-task-id="${task.id}" data-current-stage="${stageId}" data-target-stage="${sortedStageKeys[index - 1]}"><i data-lucide="chevron-left" style="width:16px;"></i></button>` 
+        const leftBtn = showNav && index > 0
+          ? `<button class="btn btn-sm btn-link text-info p-0 move-task-left-btn" data-task-id="${task.id}" data-current-stage="${stageId}" data-target-stage="${sortedStageKeys[index - 1]}"><i data-lucide="chevron-left" style="width:16px;"></i></button>`
           : '';
-        const rightBtn = showNav && index < sortedStageKeys.length - 1 
-          ? `<button class="btn btn-sm btn-link text-info p-0 move-task-right-btn" data-task-id="${task.id}" data-current-stage="${stageId}" data-target-stage="${sortedStageKeys[index + 1]}"><i data-lucide="chevron-right" style="width:16px;"></i></button>` 
+        const rightBtn = showNav && index < sortedStageKeys.length - 1
+          ? `<button class="btn btn-sm btn-link text-info p-0 move-task-right-btn" data-task-id="${task.id}" data-current-stage="${stageId}" data-target-stage="${sortedStageKeys[index + 1]}"><i data-lucide="chevron-right" style="width:16px;"></i></button>`
           : '';
-        
+
         // Delete button (Admin only)
         const canDelete = currentUser && currentUser.role === 'Admin';
-        const deleteBtn = canDelete 
-          ? `<button class="btn btn-sm btn-link text-danger p-0 delete-task-btn ms-2" data-task-id="${task.id}"><i data-lucide="trash-2" style="width: 14px;"></i></button>` 
+        const deleteBtn = canDelete
+          ? `<button class="btn btn-sm btn-link text-danger p-0 delete-task-btn ms-2" data-task-id="${task.id}"><i data-lucide="trash-2" style="width: 14px;"></i></button>`
           : '';
- 
+
         taskCard.innerHTML = `
           <span class="task-priority priority-${task.priority}">${task.priority === 'high' ? 'Alta' : task.priority === 'medium' ? 'Média' : 'Baixa'}</span>
-          <h6 class="text-light mb-1">${task.title}</h6>
-          <p class="text-muted small mb-2 text-truncate-3">${task.description}</p>
+          <h6 class="text-light mb-1">${escapeHTML(task.title)}</h6>
+          <p class="text-muted small mb-2 text-truncate-3">${escapeHTML(task.description)}</p>
           <div class="d-flex justify-content-between align-items-center">
             <div class="d-flex align-items-center gap-2">
               <div class="user-avatar" style="width: 24px; height: 24px; font-size: 0.65rem; box-shadow: none;" title="${assignee}">${initials}</div>
@@ -526,7 +543,7 @@ function renderKanban() {
             </div>
           </div>
         `;
-        
+
         // Reflect task status visually
         if (task.status === 'done') taskCard.classList.add('done');
         if (task.status === 'failed') taskCard.classList.add('failed');
@@ -541,7 +558,7 @@ function renderKanban() {
   });
 
   // Attach event handlers to dynamic board buttons
-  attachKanbanClickHandlers(sortedStageKeys);
+  attachKanbanClickHandlers();
   lucide.createIcons();
 }
 
@@ -559,11 +576,11 @@ function setupDragAndDropEvents(taskListContainer, stageId) {
   taskListContainer.addEventListener('drop', async (e) => {
     e.preventDefault();
     taskListContainer.classList.remove('bg-secondary', 'bg-opacity-10');
-    
+
     const taskId = e.dataTransfer.getData('text/plain');
     if (taskId && tasks[taskId] && tasks[taskId].stageId !== stageId) {
       try {
-        await update(ref(db, `tasks/${taskId}`), { stageId: stageId });
+        await api.patch(`/tasks/${taskId}/move`, { stageId });
       } catch (error) {
         console.error("Error updates task stage:", error);
       }
@@ -576,33 +593,21 @@ function setupDragAndDropEvents(taskListContainer, stageId) {
       e.dataTransfer.setData('text/plain', card.getAttribute('data-task-id'));
       card.classList.add('dragging');
     });
-    
+
     card.addEventListener('dragend', () => {
       card.classList.remove('dragging');
     });
   });
 }
 
-function attachKanbanClickHandlers(sortedStageKeys) {
+function attachKanbanClickHandlers() {
   // Delete Stage Handler
   document.querySelectorAll('.delete-stage-btn').forEach(btn => {
     btn.addEventListener('click', async () => {
       const stageId = btn.getAttribute('data-stage-id');
       if (confirm(`Tem certeza que deseja excluir esta etapa? Todas as tarefas desta coluna também serão apagadas.`)) {
         try {
-          // Delete Stage
-          await remove(ref(db, `stages/${stageId}`));
-          
-          // Delete associated tasks
-          const updates = {};
-          Object.keys(tasks).forEach(id => {
-            if (tasks[id].stageId === stageId) {
-              updates[`tasks/${id}`] = null;
-            }
-          });
-          if (Object.keys(updates).length > 0) {
-            await update(ref(db), updates);
-          }
+          await api.delete(`/stages/${stageId}`);
         } catch (error) {
           alert("Erro ao excluir etapa: permissão negada.");
         }
@@ -626,7 +631,7 @@ function attachKanbanClickHandlers(sortedStageKeys) {
       const taskId = btn.getAttribute('data-task-id');
       if (confirm("Deseja mesmo excluir esta tarefa?")) {
         try {
-          await remove(ref(db, `tasks/${taskId}`));
+          await api.delete(`/tasks/${taskId}`);
         } catch (error) {
           alert("Erro ao excluir tarefa: permissão negada.");
         }
@@ -639,9 +644,9 @@ function attachKanbanClickHandlers(sortedStageKeys) {
     btn.addEventListener('click', async () => {
       const taskId = btn.getAttribute('data-task-id');
       const targetStage = btn.getAttribute('data-target-stage');
-      
+
       try {
-        await update(ref(db, `tasks/${taskId}`), { stageId: targetStage });
+        await api.patch(`/tasks/${taskId}/move`, { stageId: targetStage });
       } catch (error) {
         console.error("Error moving task:", error);
       }
@@ -656,11 +661,7 @@ function attachKanbanClickHandlers(sortedStageKeys) {
       if (!confirm('Confirmar que esta tarefa foi finalizada com sucesso?')) return;
 
       try {
-        await update(ref(db, `tasks/${taskId}`), {
-          status: 'done',
-          completedAt: Date.now(),
-          completedBy: currentUser ? currentUser.uid : null
-        });
+        await api.patch(`/tasks/${taskId}/status`, { status: 'done' });
       } catch (error) {
         console.error('Erro ao marcar tarefa como concluída:', error);
         alert('Erro ao atualizar tarefa: ' + error.message);
@@ -676,11 +677,7 @@ function attachKanbanClickHandlers(sortedStageKeys) {
       if (!confirm('Confirmar que esta tarefa falhou/exige retrabalho?')) return;
 
       try {
-        await update(ref(db, `tasks/${taskId}`), {
-          status: 'failed',
-          completedAt: Date.now(),
-          completedBy: currentUser ? currentUser.uid : null
-        });
+        await api.patch(`/tasks/${taskId}/status`, { status: 'failed' });
       } catch (error) {
         console.error('Erro ao marcar tarefa como falha:', error);
         alert('Erro ao atualizar tarefa: ' + error.message);
@@ -709,13 +706,9 @@ function attachKanbanClickHandlers(sortedStageKeys) {
 addStageForm.addEventListener('submit', async (e) => {
   e.preventDefault();
   const title = document.getElementById('new-stage-title').value.trim();
-  
+
   try {
-    const newStageRef = push(ref(db, 'stages'));
-    await set(newStageRef, {
-      title: title,
-      order: Date.now()
-    });
+    await api.post('/stages', { title });
     addStageModal.hide();
     addStageForm.reset();
   } catch (error) {
@@ -733,19 +726,7 @@ addTaskForm.addEventListener('submit', async (e) => {
   const assigneeId = document.getElementById('task-assignee').value;
 
   try {
-    const newTaskRef = push(ref(db, 'tasks'));
-    const scheduledAt = Date.now();
-    await set(newTaskRef, {
-      title,
-      description,
-      priority,
-      assigneeId,
-      stageId,
-      creatorId: currentUser.uid,
-      createdAt: scheduledAt,
-      scheduledAt,
-      status: 'pending'
-    });
+    await api.post('/tasks', { title, description, priority, assigneeId, stageId });
 
     const assigneeName = allUsers[assigneeId]?.name || 'Equipe';
     showTaskScheduledNotification(title, assigneeName, priority);
@@ -761,136 +742,201 @@ addTaskForm.addEventListener('submit', async (e) => {
 // CHAT & ATTACHMENTS FOR STAGES & TASKS
 // ============================================
 
-// escapeHTML importado de utils.js
-
-let unsubscribeStageChat = null;
+let openStageChatId = null;
 const stageChatModalEl = document.getElementById('stageChatModal');
 let stageChatModal = null;
 
 if (stageChatModalEl) {
   stageChatModal = new bootstrap.Modal(stageChatModalEl);
   stageChatModalEl.addEventListener('hidden.bs.modal', () => {
-    if (unsubscribeStageChat) {
-      unsubscribeStageChat();
-      unsubscribeStageChat = null;
+    openStageChatId = null;
+    if (stageChatSocketHandler) {
+      getSocket().off('stageChatMessage:created', stageChatSocketHandler);
+      stageChatSocketHandler = null;
     }
   });
 }
 
-function openStageChat(stageId) {
+function renderChatMessage(container, msg) {
+  const isMine = msg.senderId === (currentUser ? currentUser.uid : null);
+
+  const messageDiv = document.createElement('div');
+  messageDiv.className = `chat-message ${isMine ? 'message-mine' : 'message-other'}`;
+
+  const timeStr = new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  const dateStr = new Date(msg.timestamp).toLocaleDateString([], { day: '2-digit', month: '2-digit' });
+
+  messageDiv.innerHTML = `
+    <div class="message-info">${isMine ? 'Você' : escapeHTML(msg.senderName)} • ${dateStr} às ${timeStr}</div>
+    <div class="message-bubble rounded shadow-sm">${escapeHTML(msg.text)}</div>
+  `;
+
+  container.appendChild(messageDiv);
+  container.scrollTop = container.scrollHeight;
+}
+
+async function openStageChat(stageId) {
   if (!stages[stageId]) return;
-  
+
+  openStageChatId = stageId;
   document.getElementById('stage-chat-title-span').textContent = stages[stageId].title;
-  
+
   const messagesContainer = document.getElementById('stage-chat-messages');
   messagesContainer.innerHTML = '<div class="text-center py-4 text-muted small"><div class="spinner-border spinner-border-sm text-info me-2"></div>Carregando mensagens...</div>';
-  
+
   const chatForm = document.getElementById('stage-chat-form');
   chatForm.reset();
-  
-  if (unsubscribeStageChat) {
-    unsubscribeStageChat();
-    unsubscribeStageChat = null;
-  }
-  
-  const chatRef = ref(db, `stage-chats/${stageId}/messages`);
-  unsubscribeStageChat = onValue(chatRef, (snapshot) => {
+
+  try {
+    const { messages } = await api.get(`/chat/stages/${stageId}/messages`);
     messagesContainer.innerHTML = '';
-    
-    if (!snapshot.exists()) {
+    if (messages.length === 0) {
       messagesContainer.innerHTML = '<div class="text-center py-4 text-muted small">Nenhuma mensagem nesta etapa ainda. Envie a primeira!</div>';
-      return;
+    } else {
+      messages.forEach(msg => renderChatMessage(messagesContainer, msg));
     }
-    
-    snapshot.forEach((childSnapshot) => {
-      const msg = childSnapshot.val();
-      const isMine = msg.senderId === (currentUser ? currentUser.uid : null);
-      
-      const messageDiv = document.createElement('div');
-      messageDiv.className = `chat-message ${isMine ? 'message-mine' : 'message-other'}`;
-      
-      const timeStr = new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-      const dateStr = new Date(msg.timestamp).toLocaleDateString([], { day: '2-digit', month: '2-digit' });
-      
-      messageDiv.innerHTML = `
-        <div class="message-info">${isMine ? 'Você' : msg.senderName} • ${dateStr} às ${timeStr}</div>
-        <div class="message-bubble rounded shadow-sm">${escapeHTML(msg.text)}</div>
-      `;
-      
-      messagesContainer.appendChild(messageDiv);
-    });
-    
-    messagesContainer.scrollTop = messagesContainer.scrollHeight;
-  });
-  
+  } catch (error) {
+    console.error('Erro ao carregar mensagens da etapa:', error);
+    messagesContainer.innerHTML = '<div class="text-center py-4 text-danger small">Erro ao carregar mensagens.</div>';
+  }
+
+  if (stageChatSocketHandler) {
+    getSocket().off('stageChatMessage:created', stageChatSocketHandler);
+  }
+  stageChatSocketHandler = (msg) => {
+    if (msg.stageId !== openStageChatId) return;
+    const emptyState = messagesContainer.querySelector('.text-muted.small');
+    if (emptyState && messagesContainer.children.length === 1) messagesContainer.innerHTML = '';
+    renderChatMessage(messagesContainer, msg);
+  };
+  getSocket().on('stageChatMessage:created', stageChatSocketHandler);
+
   chatForm.onsubmit = async (e) => {
     e.preventDefault();
     if (!currentUser) {
       alert("Você precisa estar logado para enviar mensagens.");
       return;
     }
-    
+
     const input = document.getElementById('stage-chat-input');
     const text = input.value.trim();
     if (!text) return;
-    
+
     try {
-      const newMsgRef = push(ref(db, `stage-chats/${stageId}/messages`));
-      await set(newMsgRef, {
-        senderId: currentUser.uid,
-        senderName: currentUser.name,
-        text: text,
-        timestamp: Date.now()
-      });
+      await api.post(`/chat/stages/${stageId}/messages`, { text });
       input.value = '';
     } catch (error) {
       console.error("Erro ao enviar mensagem na etapa:", error);
       alert("Erro ao enviar mensagem: permissão negada.");
     }
   };
-  
+
   stageChatModal.show();
 }
 
-let unsubscribeTaskChat = null;
-let unsubscribeTaskAttachments = null;
+let openTaskDetailsId = null;
 const taskDetailsModalEl = document.getElementById('taskDetailsModal');
 let taskDetailsModal = null;
 
 if (taskDetailsModalEl) {
   taskDetailsModal = new bootstrap.Modal(taskDetailsModalEl);
   taskDetailsModalEl.addEventListener('hidden.bs.modal', () => {
-    if (unsubscribeTaskChat) {
-      unsubscribeTaskChat();
-      unsubscribeTaskChat = null;
+    openTaskDetailsId = null;
+    const socket = getSocket();
+    if (taskChatSocketHandler) {
+      socket.off('taskChatMessage:created', taskChatSocketHandler);
+      taskChatSocketHandler = null;
     }
-    if (unsubscribeTaskAttachments) {
-      unsubscribeTaskAttachments();
-      unsubscribeTaskAttachments = null;
+    if (taskAttachmentCreatedHandler) {
+      socket.off('taskAttachment:created', taskAttachmentCreatedHandler);
+      taskAttachmentCreatedHandler = null;
+    }
+    if (taskAttachmentDeletedHandler) {
+      socket.off('taskAttachment:deleted', taskAttachmentDeletedHandler);
+      taskAttachmentDeletedHandler = null;
     }
   });
 }
 
-function openTaskDetails(taskId) {
+function renderAttachmentItem(container, file) {
+  const isMine = file.uploadedBy === (currentUser ? currentUser.uid : null);
+  const isAdmin = currentUser && currentUser.role === 'Admin';
+
+  const itemDiv = document.createElement('div');
+  itemDiv.className = 'attachment-item';
+  itemDiv.setAttribute('data-attachment-id', file.id);
+
+  const isImage = file.type.startsWith('image/');
+  let mediaPreview = '';
+  if (isImage) {
+    mediaPreview = `<img class="attachment-thumb" src="${file.url}" alt="${escapeHTML(file.name)}" />`;
+  } else {
+    let iconName = 'file';
+    if (file.type === 'application/pdf') iconName = 'file-text';
+    else if (file.type.includes('word') || file.type.includes('officedocument')) iconName = 'file-type-2';
+
+    mediaPreview = `
+      <div class="attachment-icon-wrapper">
+        <i data-lucide="${iconName}" style="width: 18px; height: 18px;"></i>
+      </div>
+    `;
+  }
+
+  const canDelete = isMine || isAdmin;
+  const deleteBtnMarkup = canDelete
+    ? `<button class="btn btn-sm btn-link text-danger p-1 delete-attachment-btn" data-attachment-id="${file.id}"><i data-lucide="trash-2" style="width: 16px;"></i></button>`
+    : '';
+
+  itemDiv.innerHTML = `
+    <div class="attachment-meta">
+      ${mediaPreview}
+      <div class="attachment-name-box">
+        <a href="${file.url}" target="_blank" class="attachment-name text-truncate d-block" style="max-width: 170px;" title="${escapeHTML(file.name)}">${escapeHTML(file.name)}</a>
+        <div class="attachment-info-sub">Por ${escapeHTML(file.uploadedByName)}</div>
+      </div>
+    </div>
+    <div>
+      ${deleteBtnMarkup}
+    </div>
+  `;
+
+  container.appendChild(itemDiv);
+
+  const deleteBtn = itemDiv.querySelector('.delete-attachment-btn');
+  if (deleteBtn) {
+    deleteBtn.onclick = async () => {
+      if (!confirm("Deseja realmente excluir este anexo?")) return;
+      try {
+        await api.delete(`/attachments/${file.id}`);
+      } catch (error) {
+        console.error("Erro ao deletar anexo:", error);
+        alert("Erro ao excluir o anexo: " + error.message);
+      }
+    };
+  }
+}
+
+async function openTaskDetails(taskId) {
   const task = tasks[taskId];
   if (!task) return;
-  
+
+  openTaskDetailsId = taskId;
   document.getElementById('task-details-title').textContent = task.title;
-  
+
   const priorityEl = document.getElementById('task-details-priority');
   priorityEl.className = `task-priority priority-${task.priority}`;
   priorityEl.textContent = task.priority === 'high' ? 'Alta' : task.priority === 'medium' ? 'Média' : 'Baixa';
-  
+
   const statusEl = document.getElementById('task-details-status');
   statusEl.textContent = task.status === 'done' ? 'Concluída' : task.status === 'failed' ? 'Falhou' : 'Pendente';
   statusEl.className = `badge ${task.status === 'done' ? 'bg-success' : task.status === 'failed' ? 'bg-danger' : 'bg-warning text-dark'}`;
-  
+
   document.getElementById('task-details-description').textContent = task.description;
-  
+
   const assignee = allUsers[task.assigneeId] ? allUsers[task.assigneeId].name : 'Desconhecido';
   const assigneeInitials = getInitials(assignee);
   document.getElementById('task-details-assignee-name').textContent = assignee;
-  
+
   const assigneeAvatarEl = document.getElementById('task-details-assignee-avatar');
   const assigneeUser = allUsers[task.assigneeId];
   if (assigneeUser && assigneeUser.photoURL) {
@@ -898,219 +944,146 @@ function openTaskDetails(taskId) {
   } else {
     assigneeAvatarEl.innerHTML = assigneeInitials;
   }
-  
+
   const creator = allUsers[task.creatorId] ? allUsers[task.creatorId].name : 'Desconhecido';
   document.getElementById('task-details-creator-name').textContent = creator;
-  
+
   document.getElementById('task-details-created-at').textContent = new Date(task.createdAt).toLocaleString([], { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
   document.getElementById('task-details-scheduled-at').textContent = new Date(task.scheduledAt).toLocaleString([], { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
-  
+
   // Chat
   const chatMessagesContainer = document.getElementById('task-chat-messages');
   chatMessagesContainer.innerHTML = '<div class="text-center py-3 text-muted small"><div class="spinner-border spinner-border-sm text-info me-2"></div>Carregando chat...</div>';
-  
+
   const chatForm = document.getElementById('task-chat-form');
   chatForm.reset();
-  
-  if (unsubscribeTaskChat) {
-    unsubscribeTaskChat();
-    unsubscribeTaskChat = null;
-  }
-  
-  unsubscribeTaskChat = onValue(ref(db, `task-chats/${taskId}/messages`), (snapshot) => {
+
+  try {
+    const { messages } = await api.get(`/chat/tasks/${taskId}/messages`);
     chatMessagesContainer.innerHTML = '';
-    
-    if (!snapshot.exists()) {
+    if (messages.length === 0) {
       chatMessagesContainer.innerHTML = '<div class="text-center py-4 text-muted small">Nenhuma mensagem neste chat ainda.</div>';
-      return;
+    } else {
+      messages.forEach(msg => renderChatMessage(chatMessagesContainer, msg));
     }
-    
-    snapshot.forEach((childSnapshot) => {
-      const msg = childSnapshot.val();
-      const isMine = msg.senderId === (currentUser ? currentUser.uid : null);
-      
-      const messageDiv = document.createElement('div');
-      messageDiv.className = `chat-message ${isMine ? 'message-mine' : 'message-other'}`;
-      
-      const timeStr = new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-      
-      messageDiv.innerHTML = `
-        <div class="message-info">${isMine ? 'Você' : msg.senderName} • ${timeStr}</div>
-        <div class="message-bubble rounded shadow-sm">${escapeHTML(msg.text)}</div>
-      `;
-      
-      chatMessagesContainer.appendChild(messageDiv);
-    });
-    
-    chatMessagesContainer.scrollTop = chatMessagesContainer.scrollHeight;
-  });
-  
+  } catch (error) {
+    console.error('Erro ao carregar chat da tarefa:', error);
+    chatMessagesContainer.innerHTML = '<div class="text-center py-4 text-danger small">Erro ao carregar chat.</div>';
+  }
+
+  const socket = getSocket();
+  if (taskChatSocketHandler) socket.off('taskChatMessage:created', taskChatSocketHandler);
+  taskChatSocketHandler = (msg) => {
+    if (msg.taskId !== openTaskDetailsId) return;
+    if (chatMessagesContainer.children.length === 1 && chatMessagesContainer.querySelector('.text-muted.small')) {
+      chatMessagesContainer.innerHTML = '';
+    }
+    renderChatMessage(chatMessagesContainer, msg);
+  };
+  socket.on('taskChatMessage:created', taskChatSocketHandler);
+
   chatForm.onsubmit = async (e) => {
     e.preventDefault();
     if (!currentUser) return;
-    
+
     const input = document.getElementById('task-chat-input');
     const text = input.value.trim();
     if (!text) return;
-    
+
     try {
-      const newMsgRef = push(ref(db, `task-chats/${taskId}/messages`));
-      await set(newMsgRef, {
-        senderId: currentUser.uid,
-        senderName: currentUser.name,
-        text: text,
-        timestamp: Date.now()
-      });
+      await api.post(`/chat/tasks/${taskId}/messages`, { text });
       input.value = '';
     } catch (error) {
       console.error("Erro ao enviar mensagem na tarefa:", error);
       alert("Erro ao enviar mensagem: permissão negada.");
     }
   };
-  
+
   // Attachments
   const attachmentsListContainer = document.getElementById('task-attachments-list');
   attachmentsListContainer.innerHTML = '<div class="text-center py-3 text-muted small">Carregando anexos...</div>';
-  
+
   const uploadFileInput = document.getElementById('task-attachment-file');
   uploadFileInput.value = '';
-  
+
   const btnUpload = document.getElementById('btn-upload-attachment');
   const progressContainer = document.getElementById('upload-progress-container');
   const progressBar = document.getElementById('upload-progress-bar');
-  
+
   progressContainer.classList.add('d-none');
   progressBar.style.width = '0%';
-  
-  if (unsubscribeTaskAttachments) {
-    unsubscribeTaskAttachments();
-    unsubscribeTaskAttachments = null;
-  }
-  
-  unsubscribeTaskAttachments = onValue(ref(db, `task-attachments/${taskId}/attachments`), (snapshot) => {
+
+  try {
+    const { attachments } = await api.get(`/tasks/${taskId}/attachments`);
     attachmentsListContainer.innerHTML = '';
-    
-    if (!snapshot.exists()) {
+    if (attachments.length === 0) {
       attachmentsListContainer.innerHTML = '<div class="text-center py-4 text-muted small">Nenhum anexo nesta tarefa.</div>';
-      return;
+    } else {
+      attachments.forEach(file => renderAttachmentItem(attachmentsListContainer, file));
     }
-    
-    snapshot.forEach((childSnapshot) => {
-      const file = childSnapshot.val();
-      const isMine = file.uploadedBy === (currentUser ? currentUser.uid : null);
-      const isAdmin = currentUser && currentUser.role === 'Admin';
-      
-      const itemDiv = document.createElement('div');
-      itemDiv.className = 'attachment-item';
-      
-      const isImage = file.type.startsWith('image/');
-      let mediaPreview = '';
-      if (isImage) {
-        mediaPreview = `<img class="attachment-thumb" src="${file.url}" alt="${file.name}" />`;
-      } else {
-        let iconName = 'file';
-        if (file.type === 'application/pdf') iconName = 'file-text';
-        else if (file.type.includes('word') || file.type.includes('officedocument')) iconName = 'file-type-2';
-        
-        mediaPreview = `
-          <div class="attachment-icon-wrapper">
-            <i data-lucide="${iconName}" style="width: 18px; height: 18px;"></i>
-          </div>
-        `;
-      }
-      
-      const canDelete = isMine || isAdmin;
-      const deleteBtnMarkup = canDelete 
-        ? `<button class="btn btn-sm btn-link text-danger p-1 delete-attachment-btn" data-attachment-id="${file.id}" data-path="${file.path}"><i data-lucide="trash-2" style="width: 16px;"></i></button>`
-        : '';
-        
-      itemDiv.innerHTML = `
-        <div class="attachment-meta">
-          ${mediaPreview}
-          <div class="attachment-name-box">
-            <a href="${file.url}" target="_blank" class="attachment-name text-truncate d-block" style="max-width: 170px;" title="${file.name}">${file.name}</a>
-            <div class="attachment-info-sub">Por ${file.uploadedByName}</div>
-          </div>
-        </div>
-        <div>
-          ${deleteBtnMarkup}
-        </div>
-      `;
-      
-      attachmentsListContainer.appendChild(itemDiv);
-    });
-    
     if (window.lucide) lucide.createIcons();
-    
-    attachmentsListContainer.querySelectorAll('.delete-attachment-btn').forEach(btn => {
-      btn.onclick = async () => {
-        const fileId = btn.getAttribute('data-attachment-id');
-        const filePath = btn.getAttribute('data-path');
-        if (!confirm("Deseja realmente excluir este anexo?")) return;
-        
-        try {
-          const storageFileRef = sRef(storage, filePath);
-          await deleteObject(storageFileRef);
-          await remove(ref(db, `task-attachments/${taskId}/attachments/${fileId}`));
-        } catch (error) {
-          console.error("Erro ao deletar anexo:", error);
-          alert("Erro ao excluir o anexo: " + error.message);
-        }
-      };
-    });
-  });
-  
+  } catch (error) {
+    console.error('Erro ao carregar anexos:', error);
+    attachmentsListContainer.innerHTML = '<div class="text-center py-4 text-danger small">Erro ao carregar anexos.</div>';
+  }
+
+  if (taskAttachmentCreatedHandler) socket.off('taskAttachment:created', taskAttachmentCreatedHandler);
+  taskAttachmentCreatedHandler = (file) => {
+    if (file.taskId !== openTaskDetailsId) return;
+    const emptyState = attachmentsListContainer.querySelector('.text-muted.small');
+    if (emptyState) attachmentsListContainer.innerHTML = '';
+    renderAttachmentItem(attachmentsListContainer, file);
+    if (window.lucide) lucide.createIcons();
+  };
+  socket.on('taskAttachment:created', taskAttachmentCreatedHandler);
+
+  if (taskAttachmentDeletedHandler) socket.off('taskAttachment:deleted', taskAttachmentDeletedHandler);
+  taskAttachmentDeletedHandler = ({ id, taskId: deletedTaskId }) => {
+    if (deletedTaskId !== openTaskDetailsId) return;
+    const item = attachmentsListContainer.querySelector(`[data-attachment-id="${id}"]`);
+    if (item) item.remove();
+    if (attachmentsListContainer.children.length === 0) {
+      attachmentsListContainer.innerHTML = '<div class="text-center py-4 text-muted small">Nenhum anexo nesta tarefa.</div>';
+    }
+  };
+  socket.on('taskAttachment:deleted', taskAttachmentDeletedHandler);
+
   btnUpload.onclick = async () => {
     if (!currentUser) return;
     if (currentUser.role === 'Visualizador') {
       alert("Visualizadores não podem enviar arquivos.");
       return;
     }
-    
+
     const file = uploadFileInput.files[0];
     if (!file) {
       alert("Selecione um arquivo primeiro.");
       return;
     }
-    
+
     if (file.size > 10 * 1024 * 1024) {
       alert("O arquivo não pode exceder o tamanho máximo de 10MB.");
       return;
     }
-    
+
     btnUpload.disabled = true;
     progressContainer.classList.remove('d-none');
     progressBar.style.width = '0%';
-    
-    const fileStoragePath = `task-attachments/${taskId}/${Date.now()}_${file.name}`;
-    const fileRef = sRef(storage, fileStoragePath);
-    
+
     try {
       progressBar.style.width = '50%';
-      await uploadBytes(fileRef, file);
+      const formData = new FormData();
+      formData.append('file', file);
+      await api.upload(`/tasks/${taskId}/attachments`, formData);
       progressBar.style.width = '100%';
-      
-      const downloadURL = await getDownloadURL(fileRef);
-      
-      const attachmentId = push(ref(db)).key;
-      await set(ref(db, `task-attachments/${taskId}/attachments/${attachmentId}`), {
-        id: attachmentId,
-        name: file.name,
-        url: downloadURL,
-        type: file.type || 'application/octet-stream',
-        path: fileStoragePath,
-        uploadedBy: currentUser.uid,
-        uploadedByName: currentUser.name,
-        uploadedAt: Date.now()
-      });
-      
+
       uploadFileInput.value = '';
       setTimeout(() => {
         progressContainer.classList.add('d-none');
         progressBar.style.width = '0%';
         btnUpload.disabled = false;
       }, 1000);
-      
+
     } catch (error) {
       console.error("Erro no upload do arquivo:", error);
       alert("Erro ao enviar o arquivo: " + error.message);
@@ -1118,11 +1091,11 @@ function openTaskDetails(taskId) {
       btnUpload.disabled = false;
     }
   };
-  
+
   const chatTabButton = document.getElementById('task-chat-tab');
   if (chatTabButton) {
     bootstrap.Tab.getOrCreateInstance(chatTabButton).show();
   }
-  
+
   taskDetailsModal.show();
 }

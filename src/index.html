@@ -58,10 +58,24 @@
     <header class="glass-panel p-3 mb-4 d-flex flex-wrap justify-content-between align-items-center gap-3">
       <div class="d-flex align-items-center gap-2">
         <i data-lucide="shield-alert" class="text-info" style="width: 28px; height: 28px;"></i>
-        <h3 class="mb-0 me-3 fw-bold text-accent">CYBHOR TECH</h3>
+        <h3 class="mb-0 me-3 fw-bold text-accent">CYBHOR TECH <span class="portal-version-badge">v2</span></h3>
       </div>
       
       <div class="d-flex align-items-center gap-3 ms-auto">
+        <nav class="portal-nav d-flex align-items-center gap-1 flex-wrap">
+          <a href="development.html" class="portal-nav-link">
+            <i data-lucide="code-2" style="width: 16px; height: 16px;"></i>
+            <span>Desenvolvimento</span>
+          </a>
+          <a href="finance.html" class="portal-nav-link">
+            <i data-lucide="wallet" style="width: 16px; height: 16px;"></i>
+            <span>Financeiro</span>
+          </a>
+          <a href="marketing.html" class="portal-nav-link">
+            <i data-lucide="megaphone" style="width: 16px; height: 16px;"></i>
+            <span>Marketing</span>
+          </a>
+        </nav>
         <!-- Admin Portal Redirect (visible only to Admins) -->
         <a id="btn-admin-portal" href="admin.html" class="btn btn-cyber py-1.5 px-3 me-2 d-none">
           <i data-lucide="shield-check" class="align-middle me-1"></i> Painel Admin
@@ -115,6 +129,15 @@
       <!-- Navigation Section -->
       <div class="drawer-section">
         <span class="drawer-section-title">Navegação</span>
+        <a href="development.html" class="drawer-btn">
+          <i data-lucide="code-2"></i> Desenvolvimento
+        </a>
+        <a href="finance.html" class="drawer-btn">
+          <i data-lucide="wallet"></i> Financeiro
+        </a>
+        <a href="marketing.html" class="drawer-btn">
+          <i data-lucide="megaphone"></i> Marketing
+        </a>
         <a id="drawer-btn-dashboard" href="dashboard.html" class="drawer-btn">
           <i data-lucide="bar-chart-2"></i> Dashboard
         </a>
@@ -142,6 +165,46 @@
         <button id="drawer-btn-logout" class="drawer-btn" style="border-color: #dc2626; color: #dc2626;">
           <i data-lucide="log-out"></i> Sair
         </button>
+      </div>
+    </div>
+
+    <!-- MODULES QUICK ACCESS -->
+    <div class="row g-3 mb-4">
+      <div class="col-md-4">
+        <a href="development.html" class="module-quick-card glass-panel d-block p-3 text-decoration-none">
+          <div class="d-flex align-items-center gap-3">
+            <div class="stat-icon stat-icon-info"><i data-lucide="code-2"></i></div>
+            <div>
+              <h6 class="mb-0">Desenvolvimento</h6>
+              <small class="text-muted">Bugs, releases e links do projeto</small>
+            </div>
+            <i data-lucide="chevron-right" class="ms-auto text-muted" style="width: 18px;"></i>
+          </div>
+        </a>
+      </div>
+      <div class="col-md-4">
+        <a href="finance.html" class="module-quick-card glass-panel d-block p-3 text-decoration-none">
+          <div class="d-flex align-items-center gap-3">
+            <div class="stat-icon stat-icon-success"><i data-lucide="wallet"></i></div>
+            <div>
+              <h6 class="mb-0">Financeiro</h6>
+              <small class="text-muted">Receitas, despesas e fluxo de caixa</small>
+            </div>
+            <i data-lucide="chevron-right" class="ms-auto text-muted" style="width: 18px;"></i>
+          </div>
+        </a>
+      </div>
+      <div class="col-md-4">
+        <a href="marketing.html" class="module-quick-card glass-panel d-block p-3 text-decoration-none">
+          <div class="d-flex align-items-center gap-3">
+            <div class="stat-icon stat-icon-purple"><i data-lucide="megaphone"></i></div>
+            <div>
+              <h6 class="mb-0">Marketing</h6>
+              <small class="text-muted">Campanhas e calendário de conteúdo</small>
+            </div>
+            <i data-lucide="chevron-right" class="ms-auto text-muted" style="width: 18px;"></i>
+          </div>
+        </a>
       </div>
     </div>
 
@@ -391,6 +454,8 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.0.9/purify.min.js" integrity="sha512-9+ilAOeXY8qy2bw/h51MmliNNHvdyhTpLIlqDmVpD26z8VjVJsUJtk5rhbDIUvYiD+EpGoAu0xTa7MhZohFQjA==" crossorigin="anonymous"></script>
   <!-- Bootstrap 5.3 JS -->
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz" crossorigin="anonymous"></script>
+  <!-- Socket.IO client (sincronização em tempo real) -->
+  <script src="https://cdn.socket.io/4.8.1/socket.io.min.js"></script>
   <!-- Mobile Menu Controller -->
   <script type="module" src="assets/js/shared/mobile-menu.js"></script>
   <!-- Main App JS Script -->

@@ -1,16 +1,13 @@
-import { signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.13.0/firebase-auth.js";
-import { ref, onValue, update, get } from "https://www.gstatic.com/firebasejs/12.13.0/firebase-database.js";
-import { ref as storageRef, uploadBytes, getDownloadURL, deleteObject } from "https://www.gstatic.com/firebasejs/12.13.0/firebase-storage.js";
-import { auth, db, storage } from "../shared/firebase-init.js";
+import { api, ApiError } from "../shared/api-client.js";
+import { getSocket } from "../shared/socket-client.js";
 import { initializeTheme, setupThemeToggle } from "../shared/theme.js";
-import { getInitials, ensureUserProfileDefaults } from "../shared/utils.js";
+import { getInitials } from "../shared/utils.js";
 import storageManager from "../shared/storage-manager.js";
 import mobileMenuController from "../shared/mobile-menu.js";
 
 // State
 let currentUser = null;
 let allTasks = {};
-let activeListeners = [];
 
 // DOM Elements
 const loadingOverlay = document.getElementById('loading-overlay');
@@ -43,61 +40,59 @@ const statsTotalTasks = document.getElementById('stats-total-tasks');
 const statsCompletionRate = document.getElementById('stats-completion-rate');
 const statsContributions = document.getElementById('stats-contributions');
 
-// ensureUserProfileDefaults importado de utils.js
+function arrayToMap(list, idField = 'id') {
+  const map = {};
+  list.forEach(item => {
+    map[item[idField]] = item;
+  });
+  return map;
+}
 
 // Auth & Routing
-onAuthStateChanged(auth, async (user) => {
-  activeListeners.forEach(unsubscribe => unsubscribe());
-  activeListeners = [];
-
-  if (user) {
-    try {
-      const userRef = ref(db, `users/${user.uid}`);
-      const userSnapshot = await get(userRef);
-      
-      if (userSnapshot.exists()) {
-        currentUser = { uid: user.uid, ...userSnapshot.val() };
-        startRealtimeSync(user.uid);
-      } else {
-        alert("Perfil de usuário não encontrado.");
-        signOut(auth);
-      }
-    } catch (error) {
-      console.error("Error setting up user profile:", error);
-      signOut(auth);
+async function initProfilePage() {
+  try {
+    const { user } = await api.get('/auth/me');
+    currentUser = user;
+    await startRealtimeSync();
+  } catch (error) {
+    if (!(error instanceof ApiError) || error.statusCode === 401) {
+      window.location.href = 'index.html';
+      return;
     }
-  } else {
-    window.location.href = 'index.html';
+    console.error('Erro ao carregar perfil:', error);
   }
-});
+}
 
-function startRealtimeSync(uid) {
+initProfilePage();
+
+async function startRealtimeSync() {
   // Load cached tasks
   const cachedTasks = storageManager.loadTasks();
   if (Object.keys(cachedTasks).length > 0) allTasks = cachedTasks;
 
-  // Sync current user
-  const userListener = onValue(ref(db, `users/${uid}`), async (snapshot) => {
-    if (snapshot.exists()) {
-      currentUser = { uid, ...snapshot.val() };
-      await ensureUserProfileDefaults(uid, currentUser);
-      const refreshedSnapshot = await get(ref(db, `users/${uid}`));
-      if (refreshedSnapshot.exists()) {
-        currentUser = { uid, ...refreshedSnapshot.val() };
-      }
+  try {
+    const { tasks } = await api.get('/tasks');
+    allTasks = arrayToMap(tasks);
+    storageManager.saveTasks(allTasks);
+  } catch (error) {
+    console.error('Erro ao carregar tarefas:', error);
+  }
+
+  updateProfileUI();
+  updateStatistics();
+
+  const socket = getSocket();
+
+  socket.on('user:updated', (user) => {
+    if (user.uid === currentUser.uid) {
+      currentUser = { ...currentUser, ...user };
       updateProfileUI();
     }
   });
-  activeListeners.push(userListener);
 
-  // Sync tasks
-  const tasksListener = onValue(ref(db, 'tasks'), (snapshot) => {
-    allTasks = snapshot.exists() ? snapshot.val() : {};
-    storageManager.saveTasks(allTasks);
-    updateProfileUI();
-    updateStatistics();
-  });
-  activeListeners.push(tasksListener);
+  socket.on('task:created', (task) => { allTasks[task.id] = task; storageManager.saveTasks(allTasks); updateProfileUI(); updateStatistics(); });
+  socket.on('task:updated', (task) => { allTasks[task.id] = task; storageManager.saveTasks(allTasks); updateProfileUI(); updateStatistics(); });
+  socket.on('task:deleted', ({ id }) => { delete allTasks[id]; storageManager.saveTasks(allTasks); updateProfileUI(); updateStatistics(); });
 
   // Show main content
   setTimeout(() => {
@@ -119,7 +114,7 @@ function updateProfileUI() {
   if (mobileMenuController) {
     mobileMenuController.updateUserInfo(currentUser.name, currentUser.role, initials, currentUser.photoURL);
   }
-  
+
   // Avatar with photo or initials
   if (currentUser.photoURL) {
     profileAvatarLarge.innerHTML = `<img src="${currentUser.photoURL}" alt="Foto de perfil" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;">`;
@@ -128,7 +123,7 @@ function updateProfileUI() {
     profileAvatarLarge.textContent = initials;
     btnRemovePhoto.style.display = 'none';
   }
-  
+
   profileUserName.textContent = currentUser.name;
   profileUserEmail.textContent = currentUser.email || '--';
   profileUserRole.textContent = currentUser.role;
@@ -138,7 +133,7 @@ function updateProfileUI() {
   let badgeClass = 'role-visualizador';
   if (currentUser.role === 'Admin') badgeClass = 'role-admin';
   else if (currentUser.role === 'Integrante') badgeClass = 'role-integrante';
-  
+
   profileRoleBadge.innerHTML = `<span class="badge ${badgeClass}">${currentUser.role}</span>`;
 
   // Created Date
@@ -182,7 +177,7 @@ function updateStatistics() {
   statsTotalTasks.textContent = total;
   statsCompletionRate.textContent = `${rate}%`;
 
-  // Contributions (ideas created + tasks created)
+  // Contributions (tarefas criadas pelo usuário)
   const tasksCreatedByUser = Object.values(allTasks).filter(task => task.creatorId === currentUser.uid).length;
   statsContributions.textContent = tasksCreatedByUser;
 }
@@ -193,15 +188,16 @@ profileMessageForm.addEventListener('submit', async (e) => {
   if (!currentUser) return;
 
   const message = profileMessageInput.value.trim();
-  
+
   try {
-    await update(ref(db, `users/${currentUser.uid}`), { profileMessage: message });
-    currentUser.profileMessage = message;
-    
+    const { user } = await api.patch('/profile/message', { profileMessage: message });
+    currentUser = { ...currentUser, ...user };
+
     if (profileMessageStatus) {
       profileMessageStatus.textContent = 'Recado salvo';
     }
     profileMessageForm.reset();
+    profileMessageInput.value = currentUser.profileMessage || '';
   } catch (error) {
     alert("Erro ao salvar recado: " + error.message);
   }
@@ -236,27 +232,12 @@ profilePhotoInput.addEventListener('change', async (e) => {
 
   try {
     photoUploadStatus.innerHTML = '<div class="alert alert-info py-2 px-3 small mb-0">Enviando foto...</div>';
-    
-    // Delete previous photo if exists
-    if (currentUser.photoURL) {
-      try {
-        const oldRef = storageRef(storage, `profile-photos/${currentUser.uid}/profile`);
-        await deleteObject(oldRef);
-      } catch (err) {
-        console.log("Não foi possível deletar foto anterior");
-      }
-    }
 
-    // Upload to Firebase Storage with fixed name for easier deletion
-    const fileRef = storageRef(storage, `profile-photos/${currentUser.uid}/profile`);
-    const snapshot = await uploadBytes(fileRef, file);
-    const downloadURL = await getDownloadURL(snapshot.ref);
+    const formData = new FormData();
+    formData.append('photo', file);
+    const { user } = await api.upload('/profile/photo', formData);
+    currentUser = { ...currentUser, ...user };
 
-    // Update user profile with new photo URL
-    await update(ref(db, `users/${currentUser.uid}`), { photoURL: downloadURL });
-    currentUser.photoURL = downloadURL;
-    
-    // Update UI completely
     updateProfileUI();
 
     photoUploadStatus.innerHTML = '<div class="alert alert-success py-2 px-3 small mb-0">✓ Foto enviada com sucesso!</div>';
@@ -273,20 +254,9 @@ btnRemovePhoto.addEventListener('click', async () => {
 
   try {
     photoUploadStatus.innerHTML = '<div class="alert alert-info py-2 px-3 small mb-0">Removendo foto...</div>';
-    
-    // Delete from storage
-    if (currentUser.photoURL) {
-      try {
-        const fileRef = storageRef(storage, `profile-photos/${currentUser.uid}/profile`);
-        await deleteObject(fileRef);
-      } catch (err) {
-        console.log("Não foi possível deletar arquivo de armazenamento", err);
-      }
-    }
 
-    // Remove from database
-    await update(ref(db, `users/${currentUser.uid}`), { photoURL: null });
-    currentUser.photoURL = null;
+    const { user } = await api.delete('/profile/photo');
+    currentUser = { ...currentUser, ...user };
 
     // Reset avatar to initials
     if (profileAvatarLarge && currentUser.name) {
@@ -304,13 +274,13 @@ btnRemovePhoto.addEventListener('click', async () => {
 
 // Logout
 btnLogout.addEventListener('click', () => {
-  signOut(auth).then(() => {
+  api.post('/auth/logout').finally(() => {
     window.location.href = 'index.html';
   });
 });
 
 btnLogoutAccount.addEventListener('click', () => {
-  signOut(auth).then(() => {
+  api.post('/auth/logout').finally(() => {
     window.location.href = 'index.html';
   });
 });

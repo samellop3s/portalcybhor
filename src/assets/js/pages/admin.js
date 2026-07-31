@@ -1,23 +1,14 @@
-import { initializeApp } from "https://www.gstatic.com/firebasejs/12.13.0/firebase-app.js";
-import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged, createUserWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/12.13.0/firebase-auth.js";
-import { ref, set, onValue, update, remove, get } from "https://www.gstatic.com/firebasejs/12.13.0/firebase-database.js";
-import { auth, db } from "../shared/firebase-init.js";
-import { firebaseConfig } from "../shared/config.js";
+import { api, ApiError } from "../shared/api-client.js";
+import { getSocket } from "../shared/socket-client.js";
 import { initializeTheme, setupThemeToggle } from "../shared/theme.js";
 import { getInitials } from "../shared/utils.js";
 import storageManager from "../shared/storage-manager.js";
 import mobileMenuController from "../shared/mobile-menu.js";
 
-// Instância secundária do Firebase para registrar novos usuários sem deslogar o admin
-const secondaryApp = initializeApp(firebaseConfig, "SecondaryRegistrationApp");
-const secondaryAuth = getAuth(secondaryApp);
-
 // State
 let currentAdmin = null;
 let allUsers = {};
 let allTasks = {};
-let allIdeas = {};
-let activeListeners = [];
 
 // DOM Elements
 const loadingOverlay = document.getElementById('loading-overlay');
@@ -41,49 +32,40 @@ const adminMembersList = document.getElementById('admin-members-list');
 initializeTheme();
 setupThemeToggle();
 
+function arrayToMap(list, idField = 'id') {
+  const map = {};
+  list.forEach(item => {
+    map[item[idField]] = item;
+  });
+  return map;
+}
+
 /* ==========================================
    AUTH & SECURITY CHECKS
    ========================================== */
 
-onAuthStateChanged(auth, async (user) => {
-  // Clear any existing active database listeners
-  activeListeners.forEach(unsubscribe => unsubscribe());
-  activeListeners = [];
+async function checkAdminAccess() {
+  try {
+    const { user } = await api.get('/auth/me');
 
-  if (user) {
-    // User signed in. Perform authorization check
-    try {
-      const userRef = ref(db, `users/${user.uid}`);
-      const snapshot = await get(userRef);
-      
-      if (snapshot.exists()) {
-        const userData = snapshot.val();
-        
-        if (userData.role === 'Admin') {
-          // Authorized Admin
-          currentAdmin = { uid: user.uid, ...userData };
-          startAdminRealtimeSync(user.uid);
-        } else {
-          // Access Denied for Integrante/Visualizador
-          showAuthError("Acesso Negado: Esta conta não possui privilégios de Administrador.");
-          signOut(auth);
-        }
-      } else {
-        // User has auth but no DB profile
-        showAuthError("Perfil de usuário não encontrado.");
-        signOut(auth);
-      }
-    } catch (error) {
-      console.error("Authorization check error:", error);
-      showAuthError("Erro na autenticação de segurança.");
-      signOut(auth);
+    if (user.role === 'Admin') {
+      currentAdmin = user;
+      await startAdminRealtimeSync();
+    } else {
+      showAuthError("Acesso Negado: Esta conta não possui privilégios de Administrador.");
+      await api.post('/auth/logout');
     }
-  } else {
-    // Logged out
-    currentAdmin = null;
-    showLoginScreen();
+  } catch (error) {
+    if (error instanceof ApiError && error.statusCode === 401) {
+      showLoginScreen();
+      return;
+    }
+    console.error("Authorization check error:", error);
+    showAuthError("Erro na autenticação de segurança.");
   }
-});
+}
+
+checkAdminAccess();
 
 function showLoginScreen() {
   loadingOverlay.classList.add('d-none');
@@ -102,13 +84,21 @@ loginForm.addEventListener('submit', async (e) => {
   e.preventDefault();
   const email = loginEmail.value.trim();
   const password = loginPassword.value;
-  
+
   loadingOverlay.classList.remove('d-none');
   loadingOverlay.style.opacity = '1';
   authAlert.classList.add('d-none');
 
   try {
-    await signInWithEmailAndPassword(auth, email, password);
+    const { user } = await api.post('/auth/login', { email, password });
+    if (user.role !== 'Admin') {
+      await api.post('/auth/logout');
+      loadingOverlay.classList.add('d-none');
+      showAuthError("Acesso Negado: Esta conta não possui privilégios de Administrador.");
+      return;
+    }
+    currentAdmin = user;
+    await startAdminRealtimeSync();
   } catch (error) {
     loadingOverlay.classList.add('d-none');
     showAuthError("Erro de Login: E-mail ou senha incorretos.");
@@ -120,7 +110,7 @@ loginForm.addEventListener('submit', async (e) => {
 btnLogout.addEventListener('click', () => {
   loadingOverlay.classList.remove('d-none');
   loadingOverlay.style.opacity = '1';
-  signOut(auth).then(() => {
+  api.post('/auth/logout').finally(() => {
     window.location.reload();
   });
 });
@@ -129,48 +119,59 @@ btnLogout.addEventListener('click', () => {
    REALTIME ADMIN DATABASE SYNC
    ========================================== */
 
-function startAdminRealtimeSync(uid) {
-  // 1. Sync current admin details
-  const adminListener = onValue(ref(db, `users/${uid}`), (snapshot) => {
-    if (snapshot.exists()) {
-      currentAdmin = { uid, ...snapshot.val() };
-      // Double check role changes in real time
+async function startAdminRealtimeSync() {
+  try {
+    const [{ users }, { tasks }] = await Promise.all([
+      api.get('/users'),
+      api.get('/tasks')
+    ]);
+
+    allUsers = arrayToMap(users, 'uid');
+    allTasks = arrayToMap(tasks);
+    storageManager.saveTasks(allTasks);
+
+    updateHeader();
+    renderAdminPanel();
+
+    if (mobileMenuController) {
+      mobileMenuController.updateUserInfo(currentAdmin.name, currentAdmin.role, getInitials(currentAdmin.name), currentAdmin.photoURL);
+    }
+  } catch (error) {
+    console.error('Erro ao carregar dados administrativos:', error);
+  }
+
+  const socket = getSocket();
+
+  socket.on('user:created', (user) => {
+    allUsers[user.uid] = user;
+    renderAdminPanel();
+  });
+
+  socket.on('user:updated', (user) => {
+    allUsers[user.uid] = user;
+    if (user.uid === currentAdmin.uid) {
+      currentAdmin = { ...currentAdmin, ...user };
       if (currentAdmin.role !== 'Admin') {
         alert("Sua permissão de Administrador foi revogada.");
-        signOut(auth);
+        api.post('/auth/logout').finally(() => window.location.reload());
+        return;
       }
       updateHeader();
-      
-      // Sincronizar mobile drawer
       if (mobileMenuController) {
         mobileMenuController.updateUserInfo(currentAdmin.name, currentAdmin.role, getInitials(currentAdmin.name), currentAdmin.photoURL);
       }
     }
+    renderAdminPanel();
   });
-  activeListeners.push(adminListener);
 
-  // 2. Sync all users
-  const allUsersListener = onValue(ref(db, 'users'), (snapshot) => {
-    if (snapshot.exists()) {
-      allUsers = snapshot.val();
-      renderAdminPanel();
-    }
+  socket.on('user:deleted', ({ uid }) => {
+    delete allUsers[uid];
+    renderAdminPanel();
   });
-  activeListeners.push(allUsersListener);
 
-  // 3. Sync tasks
-  const tasksListener = onValue(ref(db, 'tasks'), (snapshot) => {
-    allTasks = snapshot.exists() ? snapshot.val() : {};
-    storageManager.saveTasks(allTasks);
-  });
-  activeListeners.push(tasksListener);
-
-  // 4. Sync ideas
-  const ideasListener = onValue(ref(db, 'ideas'), (snapshot) => {
-    allIdeas = snapshot.exists() ? snapshot.val() : {};
-    storageManager.saveIdeas(allIdeas);
-  });
-  activeListeners.push(ideasListener);
+  socket.on('task:created', (task) => { allTasks[task.id] = task; storageManager.saveTasks(allTasks); });
+  socket.on('task:updated', (task) => { allTasks[task.id] = task; storageManager.saveTasks(allTasks); });
+  socket.on('task:deleted', ({ id }) => { delete allTasks[id]; storageManager.saveTasks(allTasks); });
 
   // Smooth loading transition
   setTimeout(() => {
@@ -236,13 +237,13 @@ function updateHeader() {
 
 function renderAdminPanel() {
   if (!currentAdmin) return;
-  
+
   adminMembersList.innerHTML = '';
-  
+
   Object.keys(allUsers).forEach(uid => {
     const user = allUsers[uid];
     const isSelf = uid === currentAdmin.uid;
-    
+
     let selectHtml = `
       <select class="form-select form-select-cyber member-role-select" data-uid="${uid}" ${isSelf ? 'disabled' : ''}>
         <option value="Integrante" ${user.role === 'Integrante' ? 'selected' : ''}>Integrante</option>
@@ -250,7 +251,7 @@ function renderAdminPanel() {
         <option value="Visualizador" ${user.role === 'Visualizador' ? 'selected' : ''}>Visualizador</option>
       </select>
     `;
-    
+
     let badgeClass = 'role-visualizador';
     if (user.role === 'Admin') badgeClass = 'role-admin';
     else if (user.role === 'Integrante') badgeClass = 'role-integrante';
@@ -268,7 +269,7 @@ function renderAdminPanel() {
       </td>
       <td>${selectHtml}</td>
     `;
-    
+
     adminMembersList.appendChild(tr);
   });
 
@@ -277,9 +278,9 @@ function renderAdminPanel() {
     select.addEventListener('change', async (e) => {
       const targetUid = e.target.getAttribute('data-uid');
       const newRole = e.target.value;
-      
+
       try {
-        await update(ref(db, `users/${targetUid}`), { role: newRole });
+        await api.patch(`/users/${targetUid}/role`, { role: newRole });
       } catch (error) {
         alert("Erro ao alterar cargo: Acesso não autorizado.");
         console.error(error);
@@ -297,38 +298,8 @@ function renderAdminPanel() {
         return;
       }
 
-      // Build batched updates: remove user, clear assignee on tasks, remove votes
-      const updates = {};
-      updates[`users/${targetUid}`] = null;
-
-      // Desatribuir tarefas atribuídas ao usuário e mark creator if needed
-      Object.keys(allTasks).forEach(tid => {
-        const t = allTasks[tid];
-        if (!t) return;
-        if (t.assigneeId === targetUid) {
-          updates[`tasks/${tid}/assigneeId`] = "";
-        }
-        if (t.creatorId === targetUid) {
-          updates[`tasks/${tid}/creatorId`] = "";
-        }
-      });
-
-      // Remove votes made by the user on any idea
-      Object.keys(allIdeas).forEach(iid => {
-        const idea = allIdeas[iid];
-        if (!idea || !idea.votes) return;
-        if (idea.votes[targetUid] !== undefined) {
-          updates[`ideas/${iid}/votes/${targetUid}`] = null;
-        }
-        // Optional: anonymize author if they authored the idea
-        if (idea.authorId === targetUid) {
-          updates[`ideas/${iid}/authorId`] = "";
-          updates[`ideas/${iid}/authorName`] = "[removido]";
-        }
-      });
-
       try {
-        await update(ref(db), updates);
+        await api.delete(`/users/${targetUid}`);
         alert('Usuário removido do cadastro e dependências atualizadas com sucesso.');
       } catch (error) {
         console.error('Erro ao remover usuário:', error);
@@ -352,7 +323,7 @@ const modalErrorAlert = document.getElementById('modal-error-alert');
 if (registerMemberForm) {
   registerMemberForm.addEventListener('submit', async (e) => {
     e.preventDefault();
-    
+
     const name = regName.value.trim();
     const email = regEmail.value.trim();
     const password = regPassword.value;
@@ -367,32 +338,18 @@ if (registerMemberForm) {
     }
 
     try {
-      // Create user credential securely on secondary instance
-      const userCredential = await createUserWithEmailAndPassword(secondaryAuth, email, password);
-      const newUser = userCredential.user;
-      
-      // Store user record in database
-      await set(ref(db, `users/${newUser.uid}`), {
-        name: name,
-        email: email,
-        role: role,
-        profileMessage: '',
-        profileCreatedAt: Date.now()
-      });
-
-      // Log out of secondary instance to clean up
-      await signOut(secondaryAuth);
+      await api.post('/users', { name, email, password, role });
 
       // Close Bootstrap modal
       const registerModalEl = document.getElementById('registerMemberModal');
       const registerModal = bootstrap.Modal.getInstance(registerModalEl);
       if (registerModal) registerModal.hide();
-      
+
       registerMemberForm.reset();
       alert(`Membro "${name}" cadastrado com sucesso!`);
     } catch (error) {
       console.error("Error registering user:", error);
-      modalErrorAlert.textContent = "Erro ao cadastrar: " + error.message;
+      modalErrorAlert.textContent = "Erro ao cadastrar: " + (error.message || 'Tente novamente.');
       modalErrorAlert.classList.remove('d-none');
     }
   });

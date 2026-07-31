@@ -1,6 +1,5 @@
-import { signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.13.0/firebase-auth.js";
-import { ref, set, push, onValue, update, remove, get } from "https://www.gstatic.com/firebasejs/12.13.0/firebase-database.js";
-import { auth, db } from "../shared/firebase-init.js";
+import { api, ApiError } from "../shared/api-client.js";
+import { getSocket } from "../shared/socket-client.js";
 import { initializeTheme, setupThemeToggle } from "../shared/theme.js";
 import storageManager from "../shared/storage-manager.js";
 
@@ -9,8 +8,6 @@ let currentUser = null;
 let allUsers = {};
 let ideas = {};
 let stages = {};
-let tasks = {};
-let activeListeners = [];
 
 // DOM Elements
 const loadingOverlay = document.getElementById('loading-overlay');
@@ -33,80 +30,81 @@ if (document.readyState === 'loading') {
   initModals();
 }
 
+function arrayToMap(list, idField = 'id') {
+  const map = {};
+  list.forEach(item => {
+    map[item[idField]] = item;
+  });
+  return map;
+}
+
 // Auth & Routing
-onAuthStateChanged(auth, async (user) => {
-  activeListeners.forEach(unsubscribe => unsubscribe());
-  activeListeners = [];
-
-  if (user) {
-    try {
-      const userRef = ref(db, `users/${user.uid}`);
-      const userSnapshot = await get(userRef);
-      
-      if (userSnapshot.exists()) {
-        currentUser = { uid: user.uid, ...userSnapshot.val() };
-        startRealtimeSync(user.uid);
-      } else {
-        alert("Perfil de usuário não encontrado.");
-        signOut(auth);
-      }
-    } catch (error) {
-      console.error("Error setting up user profile:", error);
-      signOut(auth);
+async function initIdeasPage() {
+  try {
+    const { user } = await api.get('/auth/me');
+    currentUser = user;
+    await startRealtimeSync();
+  } catch (error) {
+    if (!(error instanceof ApiError) || error.statusCode === 401) {
+      window.location.href = 'index.html';
+      return;
     }
-  } else {
-    window.location.href = 'index.html';
+    console.error('Erro ao carregar perfil:', error);
   }
-});
+}
 
-function startRealtimeSync(uid) {
+initIdeasPage();
+
+async function startRealtimeSync() {
   // Load cached data
   const cachedIdeas = storageManager.loadIdeas();
   const cachedStages = storageManager.loadStages();
-  const cachedTasks = storageManager.loadTasks();
 
   if (Object.keys(cachedIdeas).length > 0) ideas = cachedIdeas;
   if (Object.keys(cachedStages).length > 0) stages = cachedStages;
-  if (Object.keys(cachedTasks).length > 0) tasks = cachedTasks;
 
-  // Sync current user
-  const userListener = onValue(ref(db, `users/${uid}`), (snapshot) => {
-    if (snapshot.exists()) {
-      currentUser = { uid, ...snapshot.val() };
-    }
-  });
-  activeListeners.push(userListener);
+  try {
+    const [{ users }, { stages: stageList }, { ideas: ideaList }] = await Promise.all([
+      api.get('/users'),
+      api.get('/stages'),
+      api.get('/ideas')
+    ]);
 
-  // Sync all users
-  const allUsersListener = onValue(ref(db, 'users'), (snapshot) => {
-    if (snapshot.exists()) {
-      allUsers = snapshot.val();
-    }
-  });
-  activeListeners.push(allUsersListener);
+    allUsers = arrayToMap(users, 'uid');
+    stages = arrayToMap(stageList);
+    ideas = arrayToMap(ideaList);
 
-  // Sync stages
-  const stagesListener = onValue(ref(db, 'stages'), (snapshot) => {
-    stages = snapshot.exists() ? snapshot.val() : {};
     storageManager.saveStages(stages);
-  });
-  activeListeners.push(stagesListener);
+    storageManager.saveIdeas(ideas);
 
-  // Sync tasks
-  const tasksListener = onValue(ref(db, 'tasks'), (snapshot) => {
-    tasks = snapshot.exists() ? snapshot.val() : {};
-    storageManager.saveTasks(tasks);
-  });
-  activeListeners.push(tasksListener);
+    renderIdeas();
+    updateStatistics();
+  } catch (error) {
+    console.error('Erro ao carregar ideias:', error);
+  }
 
-  // Sync ideas
-  const ideasListener = onValue(ref(db, 'ideas'), (snapshot) => {
-    ideas = snapshot.exists() ? snapshot.val() : {};
+  const socket = getSocket();
+
+  socket.on('user:updated', (user) => { allUsers[user.uid] = user; });
+  socket.on('user:created', (user) => { allUsers[user.uid] = user; });
+  socket.on('user:deleted', ({ uid }) => { delete allUsers[uid]; });
+
+  socket.on('stage:created', (stage) => { stages[stage.id] = stage; storageManager.saveStages(stages); });
+  socket.on('stage:deleted', ({ id }) => { delete stages[id]; storageManager.saveStages(stages); });
+
+  socket.on('idea:created', (idea) => {
+    ideas[idea.id] = idea;
     storageManager.saveIdeas(ideas);
     renderIdeas();
     updateStatistics();
   });
-  activeListeners.push(ideasListener);
+
+  socket.on('idea:updated', (idea) => {
+    ideas[idea.id] = idea;
+    storageManager.saveIdeas(ideas);
+    renderIdeas();
+    updateStatistics();
+  });
 
   // Show main content
   setTimeout(() => {
@@ -121,7 +119,7 @@ function startRealtimeSync(uid) {
 // Render Ideas
 function renderIdeas() {
   ideasList.innerHTML = '';
-  
+
   const activeIdeasKeys = Object.keys(ideas).filter(id => ideas[id].status !== 'approved' && ideas[id].status !== 'discarded');
 
   if (activeIdeasKeys.length === 0) {
@@ -138,13 +136,13 @@ function renderIdeas() {
 
   activeIdeasKeys.reverse().forEach(ideaId => {
     const idea = ideas[ideaId];
-    
+
     // Count votes
     const votesObj = idea.votes || {};
     const totalVotes = Object.keys(votesObj).length;
     const yesVotes = Object.values(votesObj).filter(v => v === true).length;
     const noVotes = Object.values(votesObj).filter(v => v === false).length;
-    
+
     const yesPct = totalVotes > 0 ? Math.round((yesVotes / totalVotes) * 100) : 50;
     const noPct = totalVotes > 0 ? Math.round((noVotes / totalVotes) * 100) : 50;
 
@@ -207,20 +205,12 @@ function attachVotingHandlers() {
       const ideaId = btn.getAttribute('data-idea-id');
       const voteType = btn.getAttribute('data-vote');
       const voteValue = voteType === 'yes';
-      
-      const currentVoteRef = ref(db, `ideas/${ideaId}/votes/${currentUser.uid}`);
-      
-      try {
-        const snapshot = await get(currentVoteRef);
-        const currentVoteVal = snapshot.exists() ? snapshot.val() : null;
-        
-        const hasVotedSame = currentVoteVal === voteValue;
 
-        if (snapshot.exists() && hasVotedSame) {
-          await remove(currentVoteRef);
-        } else {
-          await set(currentVoteRef, voteValue);
-        }
+      const currentVoteVal = (ideas[ideaId] && ideas[ideaId].votes) ? ideas[ideaId].votes[currentUser.uid] : undefined;
+      const hasVotedSame = currentVoteVal === voteValue;
+
+      try {
+        await api.put(`/ideas/${ideaId}/vote`, { vote: hasVotedSame ? null : voteValue });
       } catch (error) {
         console.error("Error updating vote:", error);
         alert("Erro ao computar voto: " + error.message);
@@ -232,18 +222,25 @@ function attachVotingHandlers() {
     btn.addEventListener('click', () => {
       const ideaId = btn.getAttribute('data-idea-id');
       const idea = ideas[ideaId];
-      
+
       document.getElementById('promote-idea-id').value = ideaId;
       document.getElementById('promote-idea-summary').innerHTML = `A ideia <strong>"${idea.title}"</strong> será transferida para o Kanban do projeto.`;
-      
+
       const promoteTaskStage = document.getElementById('promote-task-stage');
-      let options = '';
-      
+      let stageOptions = '';
       Object.keys(stages).sort((a, b) => stages[a].order - stages[b].order).forEach(id => {
-        options += `<option value="${id}">${stages[id].title}</option>`;
+        stageOptions += `<option value="${id}">${stages[id].title}</option>`;
       });
-      
-      promoteTaskStage.innerHTML = options || '<option value="" disabled>Crie uma etapa no Kanban primeiro</option>';
+      promoteTaskStage.innerHTML = stageOptions || '<option value="" disabled>Crie uma etapa no Kanban primeiro</option>';
+
+      const promoteTaskAssignee = document.getElementById('promote-task-assignee');
+      let assigneeOptions = '<option value="" disabled selected>Selecione um integrante...</option>';
+      Object.keys(allUsers).forEach(uid => {
+        const user = allUsers[uid];
+        assigneeOptions += `<option value="${uid}">${user.name} (${user.role})</option>`;
+      });
+      promoteTaskAssignee.innerHTML = assigneeOptions;
+
       promoteIdeaModal.show();
     });
   });
@@ -255,7 +252,7 @@ function attachVotingHandlers() {
       if (!confirm('Deseja descartar esta ideia?')) return;
 
       try {
-        await update(ref(db, `ideas/${ideaId}`), { status: 'discarded' });
+        await api.patch(`/ideas/${ideaId}/discard`);
       } catch (error) {
         console.error('Erro ao descartar ideia:', error);
         alert('Erro ao descartar ideia: ' + error.message);
@@ -283,15 +280,7 @@ addIdeaForm.addEventListener('submit', async (e) => {
   const description = document.getElementById('idea-description').value.trim();
 
   try {
-    const newIdeaRef = push(ref(db, 'ideas'));
-    await set(newIdeaRef, {
-      title,
-      description,
-      authorId: currentUser.uid,
-      authorName: currentUser.name,
-      status: 'pending',
-      createdAt: Date.now()
-    });
+    await api.post('/ideas', { title, description });
     addIdeaModal.hide();
     addIdeaForm.reset();
   } catch (error) {
@@ -306,30 +295,14 @@ promoteIdeaForm.addEventListener('submit', async (e) => {
   const stageId = document.getElementById('promote-task-stage').value;
   const priority = document.getElementById('promote-task-priority').value;
   const assigneeId = document.getElementById('promote-task-assignee').value;
-  
+
   if (!stageId) {
     alert("Crie pelo menos uma etapa no Kanban primeiro!");
     return;
   }
 
-  const idea = ideas[ideaId];
-
   try {
-    const newTaskRef = push(ref(db, 'tasks'));
-    const now = Date.now();
-    await set(newTaskRef, {
-      title: `[IDEIA] ${idea.title}`,
-      description: idea.description,
-      priority,
-      assigneeId,
-      stageId,
-      creatorId: currentUser.uid,
-      createdAt: now,
-      scheduledAt: now,
-      status: 'pending'
-    });
-
-    await update(ref(db, `ideas/${ideaId}`), { status: 'approved' });
+    await api.post(`/ideas/${ideaId}/promote`, { stageId, priority, assigneeId: assigneeId || null });
 
     promoteIdeaModal.hide();
     promoteIdeaForm.reset();
@@ -341,7 +314,7 @@ promoteIdeaForm.addEventListener('submit', async (e) => {
 
 // Logout
 btnLogout.addEventListener('click', () => {
-  signOut(auth).then(() => {
+  api.post('/auth/logout').finally(() => {
     window.location.href = 'index.html';
   });
 });

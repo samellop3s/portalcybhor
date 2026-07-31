@@ -1,7 +1,6 @@
-import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.13.0/firebase-auth.js";
-import { ref, onValue } from "https://www.gstatic.com/firebasejs/12.13.0/firebase-database.js";
-import { auth, db } from "../shared/firebase-init.js";
-import { initializeTheme, setupThemeToggle, applyTheme } from "../shared/theme.js";
+import { api, ApiError } from "../shared/api-client.js";
+import { getSocket } from "../shared/socket-client.js";
+import { initializeTheme, setupThemeToggle } from "../shared/theme.js";
 import storageManager from "../shared/storage-manager.js";
 
 // DOM
@@ -29,7 +28,13 @@ function formatDateEpoch(ms) {
   return d.toLocaleString();
 }
 
-
+function arrayToMap(list, idField = 'id') {
+  const map = {};
+  list.forEach(item => {
+    map[item[idField]] = item;
+  });
+  return map;
+}
 
 function buildCharts(statsByUser) {
   const total = Object.keys(tasks).length;
@@ -204,13 +209,14 @@ function buildDashboardCsv() {
   return lines.join('\n');
 }
 
+function refreshView() {
+  const statsByUser = computeStatsByUser();
+  buildCharts(statsByUser);
+  buildTable();
+}
+
 function attachActions() {
-  btnRefresh.addEventListener('click', () => {
-    // force rebuild from current memory
-    const statsByUser = computeStatsByUser();
-    buildCharts(statsByUser);
-    buildTable();
-  });
+  btnRefresh.addEventListener('click', refreshView);
 
   btnBack.addEventListener('click', () => {
     window.history.back();
@@ -231,20 +237,15 @@ function attachActions() {
     URL.revokeObjectURL(url);
   });
 
-  btnClear.addEventListener('click', () => {
-    // not many filters implemented yet; simply rebuild
-    const statsByUser = computeStatsByUser();
-    buildCharts(statsByUser);
-    buildTable();
-  });
+  btnClear.addEventListener('click', refreshView);
 }
 
 // Real-time listeners
-function startRealtime() {
+async function startRealtime() {
   // Load cached data from localStorage first
   const cachedTasks = storageManager.loadTasks();
   const cachedStages = storageManager.loadStages();
-  
+
   if (Object.keys(cachedTasks).length > 0) {
     tasks = cachedTasks;
   }
@@ -252,30 +253,45 @@ function startRealtime() {
     stages = cachedStages;
   }
 
-  // users
-  onValue(ref(db, 'users'), snapshot => {
-    users = snapshot.exists() ? snapshot.val() : {};
-    // rebuild charts when users arrive
-    const statsByUser = computeStatsByUser();
-    buildCharts(statsByUser);
-    buildTable();
-  });
+  try {
+    const [{ users: userList }, { stages: stageList }, { tasks: taskList }] = await Promise.all([
+      api.get('/users'),
+      api.get('/stages'),
+      api.get('/tasks')
+    ]);
 
-  // stages
-  onValue(ref(db, 'stages'), snapshot => {
-    stages = snapshot.exists() ? snapshot.val() : {};
+    users = arrayToMap(userList, 'uid');
+    stages = arrayToMap(stageList);
+    tasks = arrayToMap(taskList);
+
     storageManager.saveStages(stages);
-    buildTable();
+    storageManager.saveTasks(tasks);
+
+    refreshView();
+  } catch (error) {
+    console.error('Erro ao carregar dados do dashboard:', error);
+  }
+
+  const socket = getSocket();
+
+  socket.on('user:created', (user) => { users[user.uid] = user; refreshView(); });
+  socket.on('user:updated', (user) => { users[user.uid] = user; refreshView(); });
+  socket.on('user:deleted', ({ uid }) => { delete users[uid]; refreshView(); });
+
+  socket.on('stage:created', (stage) => { stages[stage.id] = stage; storageManager.saveStages(stages); refreshView(); });
+  socket.on('stage:deleted', ({ id }) => {
+    delete stages[id];
+    Object.keys(tasks).forEach(taskId => {
+      if (tasks[taskId].stageId === id) delete tasks[taskId];
+    });
+    storageManager.saveStages(stages);
+    storageManager.saveTasks(tasks);
+    refreshView();
   });
 
-  // tasks
-  onValue(ref(db, 'tasks'), snapshot => {
-    tasks = snapshot.exists() ? snapshot.val() : {};
-    storageManager.saveTasks(tasks);
-    const statsByUser = computeStatsByUser();
-    buildCharts(statsByUser);
-    buildTable();
-  });
+  socket.on('task:created', (task) => { tasks[task.id] = task; storageManager.saveTasks(tasks); refreshView(); });
+  socket.on('task:updated', (task) => { tasks[task.id] = task; storageManager.saveTasks(tasks); refreshView(); });
+  socket.on('task:deleted', ({ id }) => { delete tasks[id]; storageManager.saveTasks(tasks); refreshView(); });
 }
 
 initializeTheme();
@@ -283,14 +299,11 @@ setupThemeToggle();
 if (window.lucide) window.lucide.createIcons();
 
 // Auth guard: allow only logged users to view (simpler UX)
-onAuthStateChanged(auth, user => {
-  if (!user) {
-    // redirect to login (reuse index.html)
-    window.location.href = './index.html';
-    return;
-  }
-
-  // start realtime after auth
+api.get('/auth/me').then(() => {
   startRealtime();
   attachActions();
+}).catch((error) => {
+  if (!(error instanceof ApiError) || error.statusCode === 401) {
+    window.location.href = './index.html';
+  }
 });

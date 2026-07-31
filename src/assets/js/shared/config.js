@@ -1,17 +1,12 @@
 // ============================================
-// Firebase Configuration - Cybhor Tech Portal
+// API Configuration - Cybhor Tech Portal
 // ============================================
-// Este arquivo centraliza as credenciais do Firebase.
-// Para alterar as chaves, edite SOMENTE este arquivo.
-// Os valores devem corresponder ao .env do projeto.
+// Deixe API_BASE_URL vazio ("") quando o frontend for servido atrás do
+// mesmo proxy reverso da API (ex: via docker-compose/nginx, onde
+// /api e /socket.io já são encaminhados para o backend Node).
+//
+// Para rodar o frontend separado da API em desenvolvimento local
+// (ex: Live Server na porta 5500 e API na porta 4000), defina a
+// URL completa do backend aqui.
 
-export const firebaseConfig = {
-  apiKey: "AIzaSyB_4aAZBxQbdAH5BsWnIk9-5-zSr0hwHc4",
-  authDomain: "cybhor-b650a.firebaseapp.com",
-  databaseURL: "https://cybhor-b650a-default-rtdb.firebaseio.com",
-  projectId: "cybhor-b650a",
-  storageBucket: "cybhor-b650a.firebasestorage.app",
-  messagingSenderId: "737331307662",
-  appId: "1:737331307662:web:ebe1ec62c2d7a819c615df",
-  measurementId: "G-NVWX7SRPS6"
-};
+export const API_BASE_URL = '';
