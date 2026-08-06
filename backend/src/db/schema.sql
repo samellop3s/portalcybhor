@@ -13,7 +13,7 @@ CREATE TABLE IF NOT EXISTS users (
   name VARCHAR(80) NOT NULL,
   email VARCHAR(255) UNIQUE NOT NULL,
   password_hash TEXT NOT NULL,
-  role VARCHAR(20) NOT NULL CHECK (role IN ('Admin', 'Integrante', 'Visualizador')),
+  role VARCHAR(20) NOT NULL CHECK (role IN ('Admin', 'Integrante', 'Visualizador', 'Rh')),
   profile_message VARCHAR(300) NOT NULL DEFAULT '',
   photo_url TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
