@@ -26,7 +26,8 @@ initPortalShell({
   active: 'rh',
   onUserReady: (user) => {
     currentUser = user;
-    if (user.role !== 'Rh' && user.role !== 'Admin') {
+    const role = String(user?.role || '').trim().toLowerCase();
+    if (role !== 'rh' && role !== 'admin') {
       window.location.href = 'index.html';
       return;
     }

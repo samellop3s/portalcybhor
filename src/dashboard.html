@@ -11,59 +11,10 @@
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
-  <header class="glass-panel p-3 mb-4 d-flex flex-wrap justify-content-between align-items-center gap-3">
-    <div class="d-flex align-items-center gap-2">
-      <i data-lucide="shield-alert" class="text-accent" style="width: 28px; height: 28px;"></i>
-      <h3 class="mb-0 me-3 fw-bold text-accent">CYBHOR DASHBOARD</h3>
-    </div>
-    <div class="d-flex align-items-center gap-2 ms-auto">
-      <button id="btn-back" class="btn btn-cyber btn-cyber-purple py-1.5 px-3">
-        <i data-lucide="arrow-left" class="align-middle me-1"></i> Voltar
-      </button>
-      <button id="btn-refresh" class="btn btn-cyber py-1.5 px-3">
-        <i data-lucide="refresh-ccw" class="align-middle me-1"></i> Atualizar
-      </button>
-      <button id="btn-theme-toggle" class="btn btn-cyber btn-cyber-purple py-1.5 px-3" title="Alternar modo escuro" aria-label="Alternar modo escuro">
-        <i data-lucide="moon" class="align-middle"></i>
-      </button>
-      <div class="user-avatar">DB</div>
-    </div>
+  <div class="container-fluid py-4">
+    <div id="portal-shell"></div>
 
-    <!-- Mobile Hamburger Button -->
-    <button class="hamburger-btn" id="mobile-menu-btn" aria-label="Abrir menu" title="Abrir menu">
-      <i data-lucide="menu" class="align-middle"></i>
-    </button>
-  </header>
-
-  <!-- Mobile Drawer Menu -->
-  <div class="drawer-overlay" id="drawer-overlay"></div>
-  <div class="mobile-drawer" id="mobile-drawer">
-    <div class="drawer-header">
-      <h5 class="drawer-title">Menu</h5>
-      <button class="drawer-close-btn" id="drawer-close-btn" aria-label="Fechar menu">
-        <i data-lucide="x"></i>
-      </button>
-    </div>
-
-    <div class="drawer-section">
-      <span class="drawer-section-title">Navegação</span>
-      <button id="drawer-btn-back" class="drawer-btn">
-        <i data-lucide="arrow-left"></i> Voltar
-      </button>
-      <button id="drawer-btn-refresh" class="drawer-btn">
-        <i data-lucide="refresh-ccw"></i> Atualizar
-      </button>
-    </div>
-
-    <div class="drawer-section">
-      <span class="drawer-section-title">Configurações</span>
-      <button id="drawer-btn-theme" class="drawer-btn">
-        <i data-lucide="moon"></i> <span id="drawer-theme-text">Modo Escuro</span>
-      </button>
-    </div>
-  </div>
-
-  <main class="container-fluid mt-4">
+  <main class="mt-0">
     <div class="row g-3">
       <div class="col-lg-4">
         <div class="glass-panel p-3">
@@ -111,6 +62,7 @@
       </div>
     </div>
   </main>
+  </div>
 
   <!-- DOMPurify -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.0.9/purify.min.js" integrity="sha512-9+ilAOeXY8qy2bw/h51MmliNNHvdyhTpLIlqDmVpD26z8VjVJsUJtk5rhbDIUvYiD+EpGoAu0xTa7MhZohFQjA==" crossorigin="anonymous"></script>

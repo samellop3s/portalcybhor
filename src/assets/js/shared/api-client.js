@@ -25,6 +25,7 @@ async function request(method, path, { body, isFormData = false } = {}) {
     method,
     headers,
     credentials: 'include',
+    cache: 'no-store',
     body: body ? (isFormData ? body : JSON.stringify(body)) : undefined
   });
 
@@ -32,8 +33,21 @@ async function request(method, path, { body, isFormData = false } = {}) {
     return null;
   }
 
+  // Alguns proxies/navegadores podem devolver 304 sem corpo; tratamos como falha
+  // recuperável forçando o caller a tentar de novo com cache desabilitado.
+  if (response.status === 304) {
+    throw new ApiError('Resposta em cache inválida. Recarregue a página.', 304);
+  }
+
   const contentType = response.headers.get('content-type') || '';
-  const data = contentType.includes('application/json') ? await response.json() : null;
+  let data = null;
+  if (contentType.includes('application/json')) {
+    try {
+      data = await response.json();
+    } catch {
+      data = null;
+    }
+  }
 
   if (!response.ok) {
     throw new ApiError(

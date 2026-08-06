@@ -1,7 +1,7 @@
 import { api, ApiError } from "../shared/api-client.js";
 import { getSocket } from "../shared/socket-client.js";
-import { initializeTheme, setupThemeToggle } from "../shared/theme.js";
 import storageManager from "../shared/storage-manager.js";
+import { initPortalShell } from "../shared/portal-shell.js";
 
 // DOM
 const totalEl = document.getElementById('total-tasks');
@@ -12,8 +12,6 @@ const pieCtx = document.getElementById('pieChart').getContext('2d');
 const barCtx = document.getElementById('barChart').getContext('2d');
 const tasksTableBody = document.querySelector('#tasks-table tbody');
 
-const btnRefresh = document.getElementById('btn-refresh');
-const btnBack = document.getElementById('btn-back');
 const btnExport = document.getElementById('btn-export-csv');
 const btnClear = document.getElementById('btn-clear-filters');
 
@@ -216,28 +214,34 @@ function refreshView() {
 }
 
 function attachActions() {
-  btnRefresh.addEventListener('click', refreshView);
+  const btnRefresh = document.getElementById('btn-refresh');
+  const btnBack = document.getElementById('btn-back');
 
-  btnBack.addEventListener('click', () => {
-    window.history.back();
-  });
+  if (btnRefresh) btnRefresh.addEventListener('click', refreshView);
+  if (btnBack) {
+    btnBack.addEventListener('click', () => {
+      window.location.href = 'index.html';
+    });
+  }
 
   document.body.classList.add('dashboard-page');
 
-  btnExport.addEventListener('click', () => {
-    const csv = buildDashboardCsv();
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'dashboard_export.csv';
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(url);
-  });
+  if (btnExport) {
+    btnExport.addEventListener('click', () => {
+      const csv = buildDashboardCsv();
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'dashboard_export.csv';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    });
+  }
 
-  btnClear.addEventListener('click', refreshView);
+  if (btnClear) btnClear.addEventListener('click', refreshView);
 }
 
 // Real-time listeners
@@ -294,16 +298,10 @@ async function startRealtime() {
   socket.on('task:deleted', ({ id }) => { delete tasks[id]; storageManager.saveTasks(tasks); refreshView(); });
 }
 
-initializeTheme();
-setupThemeToggle();
-if (window.lucide) window.lucide.createIcons();
-
-// Auth guard: allow only logged users to view (simpler UX)
-api.get('/auth/me').then(() => {
-  startRealtime();
-  attachActions();
-}).catch((error) => {
-  if (!(error instanceof ApiError) || error.statusCode === 401) {
-    window.location.href = './index.html';
+initPortalShell({
+  active: 'dashboard',
+  onUserReady: async () => {
+    await startRealtime();
+    attachActions();
   }
 });

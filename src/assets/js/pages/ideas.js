@@ -1,7 +1,7 @@
-import { api, ApiError } from "../shared/api-client.js";
+import { api } from "../shared/api-client.js";
 import { getSocket } from "../shared/socket-client.js";
-import { initializeTheme, setupThemeToggle } from "../shared/theme.js";
 import storageManager from "../shared/storage-manager.js";
+import { initPortalShell } from "../shared/portal-shell.js";
 
 // State
 let currentUser = null;
@@ -12,7 +12,6 @@ let stages = {};
 // DOM Elements
 const loadingOverlay = document.getElementById('loading-overlay');
 const ideasList = document.getElementById('ideas-list');
-const btnLogout = document.getElementById('btn-logout');
 
 // Modal & Forms
 const addIdeaForm = document.getElementById('add-idea-form');
@@ -38,22 +37,14 @@ function arrayToMap(list, idField = 'id') {
   return map;
 }
 
-// Auth & Routing
-async function initIdeasPage() {
-  try {
-    const { user } = await api.get('/auth/me');
+initPortalShell({
+  active: 'ideas',
+  onUserReady: async (user, usersMap) => {
     currentUser = user;
+    allUsers = usersMap;
     await startRealtimeSync();
-  } catch (error) {
-    if (!(error instanceof ApiError) || error.statusCode === 401) {
-      window.location.href = 'index.html';
-      return;
-    }
-    console.error('Erro ao carregar perfil:', error);
   }
-}
-
-initIdeasPage();
+});
 
 async function startRealtimeSync() {
   // Load cached data
@@ -312,14 +303,5 @@ promoteIdeaForm.addEventListener('submit', async (e) => {
   }
 });
 
-// Logout
-btnLogout.addEventListener('click', () => {
-  api.post('/auth/logout').finally(() => {
-    window.location.href = 'index.html';
-  });
-});
-
-// Inicialização
-initializeTheme();
-setupThemeToggle();
+// Logout e tema ficam no portal-shell
 if (window.lucide) window.lucide.createIcons();

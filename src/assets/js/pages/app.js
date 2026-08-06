@@ -4,12 +4,14 @@ import { initializeTheme, setupThemeToggle } from "../shared/theme.js";
 import { getInitials, escapeHTML } from "../shared/utils.js";
 import storageManager from "../shared/storage-manager.js";
 import mobileMenuController from "../shared/mobile-menu.js";
+import { renderPortalChrome, updateShellUserUI } from "../shared/portal-shell.js";
 
 // Local State
 let currentUser = null;
 let allUsers = {};
 let stages = {};
 let tasks = {};
+let shellMenuController = null;
 
 // DOM Elements
 const loadingOverlay = document.getElementById('loading-overlay');
@@ -20,18 +22,6 @@ const authAlert = document.getElementById('auth-alert');
 // Auth Forms (Registration removed)
 const loginForm = document.getElementById('login-form');
 
-// Header Elements
-const headerUserName = document.getElementById('header-user-name');
-const headerUserRoleBadge = document.getElementById('header-user-role-badge');
-const headerUserAvatar = document.getElementById('header-user-avatar');
-const btnLogout = document.getElementById('btn-logout');
-
-// Admin Portal Redirect Link
-const btnAdminPortal = document.getElementById('btn-admin-portal');
-const btnRhPortal = document.getElementById('btn-rh-portal');
-const drawerBtnRh = document.getElementById('drawer-btn-rh');
-const btnIdeasPanel = document.getElementById('btn-ideas-panel');
-
 // Kanban Board
 const kanbanBoard = document.getElementById('kanban-board');
 const addStageArea = document.getElementById('add-stage-area');
@@ -39,12 +29,6 @@ const addStageArea = document.getElementById('add-stage-area');
 // Modals forms
 const addStageForm = document.getElementById('add-stage-form');
 const addTaskForm = document.getElementById('add-task-form');
-
-if (btnIdeasPanel) {
-  btnIdeasPanel.addEventListener('click', () => {
-    window.location.href = 'ideas.html';
-  });
-}
 
 initializeTheme();
 setupThemeToggle();
@@ -98,6 +82,9 @@ async function startRealtimeSync() {
     stages = cachedStages;
   }
 
+  shellMenuController = await renderPortalChrome('projects', { showUserMeta: true });
+  updateShellUserUI(currentUser, shellMenuController || mobileMenuController);
+
   try {
     const [{ users }, { stages: stageList }, { tasks: taskList }] = await Promise.all([
       api.get('/users'),
@@ -117,9 +104,7 @@ async function startRealtimeSync() {
     updatePermissionsUI();
     renderKanban();
 
-    if (mobileMenuController) {
-      mobileMenuController.updateUserInfo(currentUser.name, currentUser.role, getInitials(currentUser.name), currentUser.photoURL);
-    }
+    updateShellUserUI(currentUser, shellMenuController || mobileMenuController);
   } catch (error) {
     console.error('Erro ao carregar dados do portal:', error);
   }
@@ -245,25 +230,19 @@ loginForm.addEventListener('submit', async (e) => {
     await startRealtimeSync();
   } catch (error) {
     loadingOverlay.classList.add('d-none');
-    showAuthError("Falha no login: verifique suas credenciais.");
+    const msg = (error && error.message) || '';
+    if (error && error.statusCode === 429) {
+      showAuthError("Muitas tentativas. Aguarde alguns minutos e tente de novo.");
+    } else if (msg) {
+      showAuthError(`Falha no login: ${msg}`);
+    } else {
+      showAuthError("Falha no login: verifique suas credenciais.");
+    }
     console.error(error);
   }
 });
 
-// Logout action
-btnLogout.addEventListener('click', () => {
-  loadingOverlay.classList.remove('d-none');
-  loadingOverlay.style.opacity = '1';
-  api.post('/auth/logout').finally(() => {
-    window.location.reload();
-  });
-});
-
-if (headerUserAvatar) {
-  headerUserAvatar.addEventListener('click', () => {
-    window.location.href = 'profile.html';
-  });
-}
+// Logout / avatar ficam no renderPortalChrome (header compartilhado)
 
 function showAuthError(msg) {
   authAlert.textContent = msg;
@@ -276,23 +255,7 @@ function showAuthError(msg) {
 
 function updateHeader() {
   if (!currentUser) return;
-  headerUserName.textContent = currentUser.name;
-
-  // Update Role Badge
-  let badgeClass = 'role-visualizador';
-  if (currentUser.role === 'Admin') badgeClass = 'role-admin';
-  else if (currentUser.role === 'Integrante') badgeClass = 'role-integrante';
-  else if (currentUser.role === 'Rh') badgeClass = 'role-rh';
-
-  headerUserRoleBadge.innerHTML = `<span class="badge ${badgeClass}">${currentUser.role}</span>`;
-
-  // Set Initials or Photo Avatar
-  const initials = getInitials(currentUser.name);
-  if (currentUser.photoURL) {
-    headerUserAvatar.innerHTML = `<img src="${currentUser.photoURL}" alt="Avatar" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;">`;
-  } else {
-    headerUserAvatar.textContent = initials;
-  }
+  updateShellUserUI(currentUser, shellMenuController || mobileMenuController);
 }
 
 function canModifyPortalContent() {
@@ -303,24 +266,13 @@ function updatePermissionsUI() {
   if (!currentUser) return;
 
   const isAdmin = currentUser.role === 'Admin';
-  const isRh = currentUser.role === 'Rh';
-
-  // Show Admin Portal Button & Stage Creation Controls
   if (isAdmin) {
-    if (btnAdminPortal) btnAdminPortal.classList.remove('d-none');
     addStageArea.classList.remove('d-none');
   } else {
-    if (btnAdminPortal) btnAdminPortal.classList.add('d-none');
     addStageArea.classList.add('d-none');
   }
 
-  if (isAdmin || isRh) {
-    if (btnRhPortal) btnRhPortal.classList.remove('d-none');
-    if (drawerBtnRh) drawerBtnRh.classList.remove('d-none');
-  } else {
-    if (btnRhPortal) btnRhPortal.classList.add('d-none');
-    if (drawerBtnRh) drawerBtnRh.classList.add('d-none');
-  }
+  updateShellUserUI(currentUser, shellMenuController || mobileMenuController);
 }
 
 function populateAssigneeDropdowns() {

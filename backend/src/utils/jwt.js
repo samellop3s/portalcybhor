@@ -28,10 +28,12 @@ export function verifyAuthToken(token) {
 }
 
 export function getAuthCookieOptions() {
+  // SameSite=Lax: frontend e API na mesma origem via proxy.
+  // Evita CSRF cross-site sem quebrar navegação normal.
   return {
     httpOnly: true,
     secure: env.cookieSecure,
-    sameSite: env.cookieSecure ? 'none' : 'lax',
+    sameSite: 'lax',
     maxAge: 7 * 24 * 60 * 60 * 1000,
     path: '/'
   };

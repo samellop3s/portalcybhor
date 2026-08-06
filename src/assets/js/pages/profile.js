@@ -1,8 +1,8 @@
-import { api, ApiError } from "../shared/api-client.js";
+import { api } from "../shared/api-client.js";
 import { getSocket } from "../shared/socket-client.js";
-import { initializeTheme, setupThemeToggle } from "../shared/theme.js";
-import { getInitials } from "../shared/utils.js";
 import storageManager from "../shared/storage-manager.js";
+import { initPortalShell } from "../shared/portal-shell.js";
+import { getInitials } from "../shared/utils.js";
 import mobileMenuController from "../shared/mobile-menu.js";
 
 // State
@@ -11,7 +11,6 @@ let allTasks = {};
 
 // DOM Elements
 const loadingOverlay = document.getElementById('loading-overlay');
-const btnLogout = document.getElementById('btn-logout');
 const btnLogoutAccount = document.getElementById('btn-logout-account');
 
 // Profile Elements
@@ -49,21 +48,13 @@ function arrayToMap(list, idField = 'id') {
 }
 
 // Auth & Routing
-async function initProfilePage() {
-  try {
-    const { user } = await api.get('/auth/me');
+initPortalShell({
+  active: 'profile',
+  onUserReady: async (user) => {
     currentUser = user;
     await startRealtimeSync();
-  } catch (error) {
-    if (!(error instanceof ApiError) || error.statusCode === 401) {
-      window.location.href = 'index.html';
-      return;
-    }
-    console.error('Erro ao carregar perfil:', error);
   }
-}
-
-initProfilePage();
+});
 
 async function startRealtimeSync() {
   // Load cached tasks
@@ -273,20 +264,10 @@ btnRemovePhoto.addEventListener('click', async () => {
   }
 });
 
-// Logout
-btnLogout.addEventListener('click', () => {
-  api.post('/auth/logout').finally(() => {
-    window.location.href = 'index.html';
-  });
-});
-
 btnLogoutAccount.addEventListener('click', () => {
   api.post('/auth/logout').finally(() => {
     window.location.href = 'index.html';
   });
 });
 
-// Inicialização
-initializeTheme();
-setupThemeToggle();
 if (window.lucide) window.lucide.createIcons();
