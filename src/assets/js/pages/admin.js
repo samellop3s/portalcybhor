@@ -249,12 +249,14 @@ function renderAdminPanel() {
         <option value="Integrante" ${user.role === 'Integrante' ? 'selected' : ''}>Integrante</option>
         <option value="Admin" ${user.role === 'Admin' ? 'selected' : ''}>Admin</option>
         <option value="Visualizador" ${user.role === 'Visualizador' ? 'selected' : ''}>Visualizador</option>
+        <option value="Rh" ${user.role === 'Rh' ? 'selected' : ''}>Rh</option>
       </select>
     `;
 
     let badgeClass = 'role-visualizador';
     if (user.role === 'Admin') badgeClass = 'role-admin';
     else if (user.role === 'Integrante') badgeClass = 'role-integrante';
+    else if (user.role === 'Rh') badgeClass = 'role-rh';
 
     const tr = document.createElement('tr');
     tr.className = 'member-row';

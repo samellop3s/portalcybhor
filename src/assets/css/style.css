@@ -1065,6 +1065,12 @@ h1, h2, h3, h4, h5, h6 {
   border: 1px solid #cbd5e1;
 }
 
+.role-rh {
+  background: #fef2f2;
+  color: #dc2626;
+  border: 1px solid #fecaca;
+}
+
 .badge.role-admin {
   background-color: var(--orange-light) !important;
   color: var(--primary-orange) !important;
@@ -1081,6 +1087,12 @@ h1, h2, h3, h4, h5, h6 {
   background-color: #f1f5f9 !important;
   color: #475569 !important;
   border: 1px solid #cbd5e1 !important;
+}
+
+.badge.role-rh {
+  background-color: #fef2f2 !important;
+  color: #dc2626 !important;
+  border: 1px solid #fecaca !important;
 }
 
 /* User Avatar */
