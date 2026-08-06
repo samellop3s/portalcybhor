@@ -28,6 +28,8 @@ const btnLogout = document.getElementById('btn-logout');
 
 // Admin Portal Redirect Link
 const btnAdminPortal = document.getElementById('btn-admin-portal');
+const btnRhPortal = document.getElementById('btn-rh-portal');
+const drawerBtnRh = document.getElementById('drawer-btn-rh');
 const btnIdeasPanel = document.getElementById('btn-ideas-panel');
 
 // Kanban Board
@@ -280,6 +282,7 @@ function updateHeader() {
   let badgeClass = 'role-visualizador';
   if (currentUser.role === 'Admin') badgeClass = 'role-admin';
   else if (currentUser.role === 'Integrante') badgeClass = 'role-integrante';
+  else if (currentUser.role === 'Rh') badgeClass = 'role-rh';
 
   headerUserRoleBadge.innerHTML = `<span class="badge ${badgeClass}">${currentUser.role}</span>`;
 
@@ -292,10 +295,15 @@ function updateHeader() {
   }
 }
 
+function canModifyPortalContent() {
+  return !!currentUser && (currentUser.role === 'Admin' || currentUser.role === 'Integrante');
+}
+
 function updatePermissionsUI() {
   if (!currentUser) return;
 
   const isAdmin = currentUser.role === 'Admin';
+  const isRh = currentUser.role === 'Rh';
 
   // Show Admin Portal Button & Stage Creation Controls
   if (isAdmin) {
@@ -304,6 +312,14 @@ function updatePermissionsUI() {
   } else {
     if (btnAdminPortal) btnAdminPortal.classList.add('d-none');
     addStageArea.classList.add('d-none');
+  }
+
+  if (isAdmin || isRh) {
+    if (btnRhPortal) btnRhPortal.classList.remove('d-none');
+    if (drawerBtnRh) drawerBtnRh.classList.remove('d-none');
+  } else {
+    if (btnRhPortal) btnRhPortal.classList.add('d-none');
+    if (drawerBtnRh) drawerBtnRh.classList.add('d-none');
   }
 }
 
@@ -471,7 +487,7 @@ function renderKanban() {
         <!-- Tasks rendered here -->
       </div>
       <div class="mt-3 d-flex flex-column gap-2">
-        <button class="btn btn-cyber w-100 py-1.5 open-add-task-btn" data-stage-id="${stageId}" ${currentUser && currentUser.role === 'Visualizador' ? 'disabled' : ''}>
+        <button class="btn btn-cyber w-100 py-1.5 open-add-task-btn" data-stage-id="${stageId}" ${currentUser && !canModifyPortalContent() ? 'disabled' : ''}>
           <i data-lucide="plus" style="width: 16px;"></i> Adicionar Tarefa
         </button>
         <button class="btn btn-cyber-secondary w-100 py-1.5 open-stage-chat-btn" data-stage-id="${stageId}">
@@ -498,11 +514,11 @@ function renderKanban() {
 
         const taskCard = document.createElement('div');
         taskCard.className = 'task-card';
-        taskCard.setAttribute('draggable', currentUser && currentUser.role !== 'Visualizador' ? 'true' : 'false');
+        taskCard.setAttribute('draggable', currentUser && canModifyPortalContent() ? 'true' : 'false');
         taskCard.setAttribute('data-task-id', task.id);
 
         // Navigation buttons for accessibility/mobile
-        const showNav = currentUser && currentUser.role !== 'Visualizador';
+        const showNav = currentUser && canModifyPortalContent();
         const leftBtn = showNav && index > 0
           ? `<button class="btn btn-sm btn-link text-info p-0 move-task-left-btn" data-task-id="${task.id}" data-current-stage="${stageId}" data-target-stage="${sortedStageKeys[index - 1]}"><i data-lucide="chevron-left" style="width:16px;"></i></button>`
           : '';
@@ -533,12 +549,14 @@ function renderKanban() {
                 <i data-lucide="message-square" style="width:14px;"></i>
               </button>
               <!-- Completion buttons -->
-              <button class="btn btn-sm btn-cyber-success complete-task-btn ms-1" data-task-id="${task.id}" title="Concluir tarefa com sucesso">
-                <i data-lucide="check" style="width:14px;"></i>
-              </button>
-              <button class="btn btn-sm btn-cyber-danger fail-task-btn ms-1" data-task-id="${task.id}" title="Marcar tarefa como falha">
-                <i data-lucide="x" style="width:14px;"></i>
-              </button>
+              ${canModifyPortalContent() ? `
+                <button class="btn btn-sm btn-cyber-success complete-task-btn ms-1" data-task-id="${task.id}" title="Concluir tarefa com sucesso">
+                  <i data-lucide="check" style="width:14px;"></i>
+                </button>
+                <button class="btn btn-sm btn-cyber-danger fail-task-btn ms-1" data-task-id="${task.id}" title="Marcar tarefa como falha">
+                  <i data-lucide="x" style="width:14px;"></i>
+                </button>
+              ` : ''}
               ${deleteBtn}
             </div>
           </div>
@@ -552,7 +570,7 @@ function renderKanban() {
     }
 
     // Attach drag events to task cards (Desktop workflow)
-    if (currentUser && currentUser.role !== 'Visualizador') {
+    if (currentUser && canModifyPortalContent()) {
       setupDragAndDropEvents(colTaskList, stageId);
     }
   });

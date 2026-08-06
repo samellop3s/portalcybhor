@@ -1095,6 +1095,25 @@ h1, h2, h3, h4, h5, h6 {
   border: 1px solid #fecaca !important;
 }
 
+.rh-dashboard-card {
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 16px;
+}
+
+.rh-note-textarea {
+  min-height: 220px;
+  resize: vertical;
+}
+
+.rh-empty-state {
+  border: 1px dashed rgba(255,255,255,0.16);
+  border-radius: 14px;
+  padding: 2rem;
+  text-align: center;
+  color: var(--muted-text);
+}
+
 /* User Avatar */
 .user-avatar {
   width: 38px;

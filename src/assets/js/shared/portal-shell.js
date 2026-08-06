@@ -20,6 +20,8 @@ const NAV_ITEMS = [
   { id: 'ideas', label: 'Ideias', icon: 'lightbulb', href: 'ideas.html' }
 ];
 
+const RH_NAV_ITEM = { id: 'rh', label: 'RH', icon: 'users', href: 'rh.html' };
+
 function buildHeaderMarkup(activeId) {
   const links = NAV_ITEMS.map(item => `
     <a href="${item.href}" class="portal-nav-link ${item.id === activeId ? 'active' : ''}">
@@ -37,6 +39,10 @@ function buildHeaderMarkup(activeId) {
 
       <nav class="portal-nav d-flex align-items-center gap-1 flex-wrap ms-auto">
         ${links}
+        <a id="btn-rh-portal" href="rh.html" class="portal-nav-link d-none">
+          <i data-lucide="users" style="width: 16px; height: 16px;"></i>
+          <span>RH</span>
+        </a>
         <a id="btn-admin-portal" href="admin.html" class="portal-nav-link d-none">
           <i data-lucide="shield-check" style="width: 16px; height: 16px;"></i>
           <span>Admin</span>
@@ -90,6 +96,9 @@ function buildDrawerMarkup(activeId) {
       <div class="drawer-section">
         <span class="drawer-section-title">Navegação</span>
         ${links}
+        <a id="drawer-btn-rh" href="rh.html" class="drawer-btn d-none">
+          <i data-lucide="users"></i> RH
+        </a>
         <a id="drawer-btn-admin" href="admin.html" class="drawer-btn d-none">
           <i data-lucide="shield-check"></i> Admin
         </a>
@@ -199,12 +208,26 @@ function usersArrayToMap(usersList) {
 
 function updateShellUserUI(currentUser, mobileMenuController) {
   const isAdmin = currentUser.role === 'Admin';
+  const canAccessRh = currentUser.role === 'Rh' || currentUser.role === 'Admin';
+
+  const btnRhPortal = document.getElementById('btn-rh-portal');
+  const drawerBtnRh = document.getElementById('drawer-btn-rh');
+  if (canAccessRh) {
+    if (btnRhPortal) btnRhPortal.classList.remove('d-none');
+    if (drawerBtnRh) drawerBtnRh.classList.remove('d-none');
+  } else {
+    if (btnRhPortal) btnRhPortal.classList.add('d-none');
+    if (drawerBtnRh) drawerBtnRh.classList.add('d-none');
+  }
 
   const btnAdminPortal = document.getElementById('btn-admin-portal');
   const drawerBtnAdmin = document.getElementById('drawer-btn-admin');
   if (isAdmin) {
     if (btnAdminPortal) btnAdminPortal.classList.remove('d-none');
     if (drawerBtnAdmin) drawerBtnAdmin.classList.remove('d-none');
+  } else {
+    if (btnAdminPortal) btnAdminPortal.classList.add('d-none');
+    if (drawerBtnAdmin) drawerBtnAdmin.classList.add('d-none');
   }
 
   const headerAvatar = document.getElementById('header-user-avatar');

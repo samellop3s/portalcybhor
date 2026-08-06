@@ -12,7 +12,7 @@ import { asyncHandler } from '../../utils/asyncHandler.js';
 
 const router = Router();
 
-const roleEnum = z.enum(['Admin', 'Integrante', 'Visualizador']);
+const roleEnum = z.enum(['Admin', 'Integrante', 'Visualizador', 'Rh']);
 
 const createUserSchema = z.object({
   name: z.string().trim().min(1).max(80),

@@ -123,7 +123,7 @@ function renderSummary() {
 }
 
 function canManageItem(item) {
-  if (!currentUser || currentUser.role === 'Visualizador') return false;
+  if (!currentUser || currentUser.role === 'Visualizador' || currentUser.role === 'Rh') return false;
   return currentUser.role === 'Admin' || item.createdBy === currentUser.uid;
 }
 

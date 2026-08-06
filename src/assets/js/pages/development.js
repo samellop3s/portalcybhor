@@ -109,7 +109,7 @@ function arrayToMap(list) {
 }
 
 function canManageItem(item) {
-  if (!currentUser || currentUser.role === 'Visualizador') return false;
+  if (!currentUser || currentUser.role === 'Visualizador' || currentUser.role === 'Rh') return false;
   return currentUser.role === 'Admin' || item.createdBy === currentUser.uid;
 }
 
@@ -178,7 +178,7 @@ function renderBugs() {
     const status = STATUS_LABELS[bug.status] || STATUS_LABELS.open;
     const assignee = bug.assigneeId ? allUsers[bug.assigneeId] : null;
     const canManage = canManageItem(bug);
-    const canChangeStatus = currentUser && currentUser.role !== 'Visualizador';
+    const canChangeStatus = currentUser && currentUser.role === 'Admin' || currentUser.role === 'Integrante';
 
     const card = document.createElement('div');
     card.className = 'module-item-card';

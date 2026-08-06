@@ -60,9 +60,12 @@ document.getElementById('btn-export-finance').addEventListener('click', exportCS
 
 transactionForm.addEventListener('submit', handleFormSubmit);
 
+function canManageTransactions() {
+  return !!currentUser && (currentUser.role === 'Admin' || currentUser.role === 'Integrante');
+}
+
 function applyPermissions() {
-  // Visualizadores têm acesso somente leitura ao módulo financeiro
-  if (currentUser && currentUser.role === 'Visualizador') {
+  if (currentUser && !canManageTransactions()) {
     document.getElementById('btn-add-transaction').classList.add('d-none');
   }
 }
@@ -159,7 +162,7 @@ function renderTable(filtered) {
   tableBody.innerHTML = '';
   emptyState.classList.toggle('d-none', filtered.length > 0);
 
-  const canManage = currentUser && currentUser.role !== 'Visualizador';
+  const canManage = canManageTransactions();
   const isAdmin = currentUser && currentUser.role === 'Admin';
 
   filtered.forEach(tx => {

@@ -132,6 +132,7 @@ function updateProfileUI() {
   // Role Badge
   let badgeClass = 'role-visualizador';
   if (currentUser.role === 'Admin') badgeClass = 'role-admin';
+  else if (currentUser.role === 'Rh') badgeClass = 'role-rh';
   else if (currentUser.role === 'Integrante') badgeClass = 'role-integrante';
 
   profileRoleBadge.innerHTML = `<span class="badge ${badgeClass}">${currentUser.role}</span>`;
